@@ -35,11 +35,13 @@ func (p *Publisher) Publish(topic string, message *broker.Message) error {
 	broker.SetIDHeader(message)
 
 	input := &sns.PublishInput{
-		MessageAttributes:      copyMessageHeader(message),
-		Message:                aws.String(string(message.Body)),
-		MessageDeduplicationId: &message.ID,
-		MessageGroupId:         &p.messageGroupID,
-		TopicArn:               &topicArn,
+		MessageAttributes: copyMessageHeader(message),
+		Message:           aws.String(string(message.Body)),
+		TopicArn:          &topicArn,
+	}
+	if isFifo(topic) {
+		input.MessageGroupId = &p.messageGroupID
+		input.MessageDeduplicationId = &message.ID
 	}
 	_, err := p.snsService.Publish(input)
 	if err != nil {

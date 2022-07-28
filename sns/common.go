@@ -17,3 +17,8 @@ func copyMessageHeader(m *broker.Message) (attribs map[string]*sns.MessageAttrib
 	}
 	return attribs
 }
+
+func isFifo(topic string) bool {
+	const suffix = ".fifo"
+	return len(topic) > len(suffix) && topic[len(topic)-len(suffix):] == suffix
+}
