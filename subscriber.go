@@ -37,8 +37,10 @@ func DefaultSubscribeOptions() *SubscribeOptions {
 type SubscribeOption func(*SubscribeOptions)
 
 // DisableAutoAck sets the option which disables auto ack functionality
-func DisableAutoAck(o *SubscribeOptions) {
-	o.AutoAck = false
+func DisableAutoAck() SubscribeOption {
+	return func(o *SubscribeOptions) {
+		o.AutoAck = false
+	}
 }
 
 // WithErrorHandler sets the option which provides error handler
