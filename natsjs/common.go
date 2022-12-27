@@ -50,7 +50,7 @@ func connect(url string, factory ConnectionFactory, opts ...nats.Option) (nats.J
 
 func buildSubject(subject, subjectPrefix string) (string, error) {
 	subjParts := strings.Split(subject, ".")
-	if len(subjParts) < 1 {
+	if len(subjParts) < 2 {
 		return "", errors.Wrapf(ErrSubjectInvalid, "NATS JetStream: the subject %q", subject)
 	}
 

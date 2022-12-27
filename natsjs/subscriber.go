@@ -61,8 +61,6 @@ func DefaultConsumerFactory(cfg *nats.ConsumerConfig, opts ...nats.JSOpt) Consum
 		config.DeliverGroup = queue
 		config.DeliverSubject = nats.NewInbox()
 
-		fmt.Println(fmt.Sprintf("DefConsumer: consumer [%q], subject [%q], queue [%q]", consumer, subject, queue))
-
 		_, err := js.AddConsumer(stream, &config, opts...)
 		return err
 	}
@@ -153,6 +151,8 @@ func (s *Subscriber) Subscribe(
 		DefaultSubscription: broker.NewDefaultSubscription(subject, opts, options, handler),
 	}
 
+	s.subscriptions.Store(subject, sub)
+
 	go s.subscribe(subject, consumer, queueGroup, sub)
 
 	return sub, nil
@@ -218,7 +218,7 @@ func (s *Subscriber) subscribe(subject, consumer, queueGroup string, sub *subscr
 					break
 				}
 				sub.nsub = natsSub
-				s.subscriptions.Store(subject, sub)
+				//s.subscriptions.Store(subject, sub)
 
 				if logger != nil {
 					logger.Info(
@@ -292,7 +292,6 @@ func (s *Subscriber) subCallback(subject string, sub *subscription) func(msg *na
 					panic(err)
 				}
 			}
-			fmt.Println(fmt.Sprintf("NATS JetStream: the subject [%q] ack", subject))
 		}
 	}
 }
