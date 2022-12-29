@@ -122,7 +122,7 @@ func TestPublisherReconnect(t *testing.T) {
 	}
 }
 
-func TestPublisherConnectAfterStart(t *testing.T) {
+func TestPublisherConnectAfterServerStart(t *testing.T) {
 	var (
 		stream     = "project"
 		subjPrefix = "service"
