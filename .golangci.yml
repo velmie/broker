@@ -85,3 +85,4 @@ run:
   skip-dirs:
     - vendor
     - cmd
+    - test*
