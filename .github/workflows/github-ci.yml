@@ -40,6 +40,6 @@ jobs:
       - name: Run natsjs tests
         run: |
           cd natsjs/
-          go test -v -cover ./test/...
+          go test -v -cover ./...
         env:
           CGO_ENABLED: 0

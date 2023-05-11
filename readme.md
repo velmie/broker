@@ -85,49 +85,6 @@ func (s *stubLogger) Info(v ...interface{}) {
 }
 ```
 
-## NATS JetStream usage example
-
-### Run NATS server in docker
-[Tutorial](https://docs.nats.io/running-a-nats-service/nats_docker/nats-docker-tutorial)
-
-example:
->$ docker run -it -p 4222:4222 --name nats-server nats:latest -js
-
-`-js` - keyword to enable JetStream
-
-### Publisher and subscriber initialization
-```go
-// See tests for more details
-func main() {
-    publisher, err := natsjs.NewPublisher(
-        streamName, // Project name
-        subjPrefix, // Publisher service name, used as a prefix in subscriptions
-        // NATS connection options
-        natsjs.DefaultConnectionFactory(),
-        // NATS JetStream options
-        natsjs.DefaultJetStreamFactory(),
-    )
-
-    subscriber, err := natsjs.NewSubscriber(
-        streamName, // Project name
-        serviceName, // Service name, used in queue grouping
-        // NATS connection options
-        natsjs.DefaultConnectionFactory(),
-        // NATS JetStream options:
-        natsjs.DefaultJetStreamFactory(),
-        // NATS Subscription options
-        natsjs.DefaultSubscriptionFactory(),
-        // NATS Consumer config
-        natsjs.DefaultConsumerFactory(nil),
-    )
-}
-```
-
-### Message publishing and subscribing
-
-See above
-
-
 ## Error handling
 
 The package provides a convenient way to handle errors and contains several "out of the box" implementations 
