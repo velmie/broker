@@ -10,9 +10,10 @@ import (
 const defaultPullMsgBatch = 1
 
 type subscriptor struct {
-	subj    string
-	subOpts []nats.SubOpt
-	ackOpts []nats.AckOpt
+	subj      string
+	doubleAck bool
+	subOpts   []nats.SubOpt
+	ackOpts   []nats.AckOpt
 }
 
 type pullSubscription struct {
@@ -65,6 +66,12 @@ func (s *pullSubscription) AckOptions(opts ...nats.AckOpt) *pullSubscription {
 	return s
 }
 
+// DoubleAck specifies if double ack is required
+func (s *pullSubscription) DoubleAck(da bool) *pullSubscription {
+	s.doubleAck = da
+	return s
+}
+
 func (s *pullSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	if s.batch <= 0 {
 		return nil, errors.New("pull subscriber batch must be greater than zero")
@@ -79,6 +86,7 @@ func (s *pullSubscription) subscribe(js nats.JetStreamContext, h broker.Handler,
 
 	ns := &subscription{
 		subj:                s.subj,
+		doubleAck:           s.doubleAck,
 		nsub:                nsub,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
@@ -124,6 +132,12 @@ func (s *syncQueueSubscription) AckOptions(opts ...nats.AckOpt) *syncQueueSubscr
 	return s
 }
 
+// DoubleAck specifies if double ack is required
+func (s *syncQueueSubscription) DoubleAck(da bool) *syncQueueSubscription {
+	s.doubleAck = da
+	return s
+}
+
 func (s *syncQueueSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	subOpts := append(s.subOpts, nats.ManualAck())
 
@@ -134,6 +148,7 @@ func (s *syncQueueSubscription) subscribe(js nats.JetStreamContext, h broker.Han
 
 	ns := &subscription{
 		subj:                s.subj,
+		doubleAck:           s.doubleAck,
 		nsub:                nsub,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
@@ -176,11 +191,18 @@ func (s *asyncQueueSubscription) AckOptions(opts ...nats.AckOpt) *asyncQueueSubs
 	return s
 }
 
+// DoubleAck specifies if double ack is required
+func (s *asyncQueueSubscription) DoubleAck(da bool) *asyncQueueSubscription {
+	s.doubleAck = da
+	return s
+}
+
 func (s *asyncQueueSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	subOpts := append(s.subOpts, nats.ManualAck())
 
 	ns := &subscription{
 		subj:                s.subj,
+		doubleAck:           s.doubleAck,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
 	}
@@ -221,6 +243,12 @@ func (s *syncSubscription) AckOptions(opts ...nats.AckOpt) *syncSubscription {
 	return s
 }
 
+// DoubleAck specifies if double ack is required
+func (s *syncSubscription) DoubleAck(da bool) *syncSubscription {
+	s.doubleAck = da
+	return s
+}
+
 func (s *syncSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	subOpts := append(s.subOpts, nats.ManualAck())
 
@@ -231,6 +259,7 @@ func (s *syncSubscription) subscribe(js nats.JetStreamContext, h broker.Handler,
 
 	ns := &subscription{
 		subj:                s.subj,
+		doubleAck:           s.doubleAck,
 		nsub:                nsub,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
@@ -266,11 +295,18 @@ func (s *asyncSubscription) AckOptions(opts ...nats.AckOpt) *asyncSubscription {
 	return s
 }
 
+// DoubleAck specifies if double ack is required
+func (s *asyncSubscription) DoubleAck(da bool) *asyncSubscription {
+	s.doubleAck = da
+	return s
+}
+
 func (s *asyncSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	subOpts := append(s.subOpts, nats.ManualAck())
 
 	ns := &subscription{
 		subj:                s.subj,
+		doubleAck:           s.doubleAck,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
 	}

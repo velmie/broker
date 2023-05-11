@@ -9,8 +9,9 @@ import (
 
 // subscription implementation of broker.Subscription
 type subscription struct {
-	subj string
-	nsub *nats.Subscription
+	subj      string
+	doubleAck bool
+	nsub      *nats.Subscription
 	*broker.DefaultSubscription
 	ackOpts []nats.AckOpt
 }
@@ -56,6 +57,12 @@ func (s *subscription) msgHandler(m *nats.Msg) {
 		// we can't handle ack/nack errors
 		if err != nil {
 			m.Nak(s.ackOpts...)
+			return
+		}
+
+		// if double ack is set -> perform sync ack
+		if s.doubleAck {
+			m.AckSync(s.ackOpts...)
 		} else {
 			m.Ack(s.ackOpts...)
 		}
@@ -100,7 +107,7 @@ PULL:
 			if errHandler != nil {
 				errHandler(err, s)
 			}
-			continue
+			continue PULL
 		}
 
 		// process each message individually

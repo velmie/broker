@@ -614,6 +614,7 @@ func TestSubscriber_LostConnection(t *testing.T) {
 		return subscriber.PullSubscription().
 			Subject(subj).
 			Durable(durable).
+			DoubleAck(true).
 			SubOptions(
 				nats.DeliverLast(),
 				nats.AckExplicit(),
