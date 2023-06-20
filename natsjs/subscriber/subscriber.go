@@ -91,7 +91,7 @@ func (s *Subscriber) createConsumer(subj string) error {
 		return nil
 	}
 
-	cfg := s.consFactory(s.stream, s.grpNamerFactory(s.stream, subj))
+	cfg := s.consFactory(subj, s.grpNamerFactory(s.stream, subj))
 
 	_, err := s.conn.JetStreamContext().AddConsumer(s.stream, cfg)
 	if err != nil {

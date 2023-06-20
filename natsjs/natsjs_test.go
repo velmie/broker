@@ -219,23 +219,48 @@ func TestPublisher_NoWaitFailedConnectRetry(t *testing.T) {
 func TestPublisher_InitStream(t *testing.T) {
 	const initStream = "INIT-STREAM"
 
-	cfg := &nats.StreamConfig{
+	initCfg := &nats.StreamConfig{
 		Name:     initStream,
 		Subjects: []string{"INIT-SUBJECT.>"},
 		NoAck:    true,
 	}
 
 	p, err := publisher.Connect(
-		publisher.InitJetStream(cfg),
+		publisher.InitJetStream(initCfg),
 	)
 	if err != nil {
 		t.Fatalf("failed to connect publisher to NATS server: %v", err)
 	}
-	defer p.Close()
+	p.Close()
 
-	_, err = srv.streamInfo(initStream)
+	si, err := srv.streamInfo(initStream)
 	if err != nil {
 		t.Fatalf("failed to get stream info: %v", err)
+	}
+
+	if !reflect.DeepEqual(initCfg.Subjects, si.Config.Subjects) {
+		t.Fatalf("expected to get subjects %v but got %v on stream creation", initCfg.Subjects, si.Config.Subjects)
+	}
+
+	// add one duplication and 2 new subjects
+	initCfg.Subjects = append(initCfg.Subjects, "NEW-SUBJECT1.>", "INIT-SUBJECT.>", "NEW-SUBJECT2.>")
+
+	p, err = publisher.Connect(
+		publisher.InitJetStream(initCfg),
+	)
+	if err != nil {
+		t.Fatalf("failed to connect publisher to NATS server: %v", err)
+	}
+	p.Close()
+
+	si, err = srv.streamInfo(initStream)
+	if err != nil {
+		t.Fatalf("failed to get stream info: %v", err)
+	}
+
+	expected := []string{"INIT-SUBJECT.>", "NEW-SUBJECT1.>", "NEW-SUBJECT2.>"} // without duplication
+	if !reflect.DeepEqual(expected, si.Config.Subjects) {
+		t.Fatalf("expected to get subjects %v but got %v on stream creation", initCfg.Subjects, si.Config.Subjects)
 	}
 }
 
@@ -335,7 +360,7 @@ func TestSubscriber_DefaultAsyncQueueSubscriber(t *testing.T) {
 	}
 }
 
-func TestSubscriber_MultiplePullSubscribers(t *testing.T) {
+func TestSubscriber_MultipleAsyncQueueSubscribers(t *testing.T) {
 	const (
 		count   = 50
 		stream  = "MULTI-PULL-SUB"
@@ -374,6 +399,7 @@ func TestSubscriber_MultiplePullSubscribers(t *testing.T) {
 	sub, err := subscriber.Connect(
 		stream,
 		subscriber.SubscriptionFactory(subscriber.DefaultSubscriptionFactory()),
+		subscriber.ConsumerFactory(subscriber.DefaultConsumerFactory()),
 	)
 	if err != nil {
 		t.Fatalf("failed to connect subscriber to NATS server: %v", err)

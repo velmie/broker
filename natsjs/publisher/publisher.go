@@ -39,7 +39,7 @@ func Connect(opts ...Option) (p *Publisher, err error) {
 	}
 
 	if o.jsCfg != nil {
-		if err = p.createJetStream(o.jsCfg); err != nil {
+		if err = p.initJetStream(o.jsCfg); err != nil {
 			return nil, err
 		}
 	}
@@ -74,13 +74,38 @@ func (p *Publisher) Connection() *conn.Connection {
 	return p.conn
 }
 
-func (p *Publisher) createJetStream(cfg *nats.StreamConfig) error {
-	if _, err := p.conn.JetStreamContext().AddStream(cfg); err != nil {
-		if errors.Is(err, nats.ErrStreamNameAlreadyInUse) {
-			return nil
+func (p *Publisher) initJetStream(cfg *nats.StreamConfig) error {
+	js, err := p.conn.JetStreamContext().StreamInfo(cfg.Name)
+	if err != nil {
+		if !errors.Is(err, nats.ErrStreamNotFound) {
+			return err
 		}
+
+		// create stream if missing
+		if _, err = p.conn.JetStreamContext().AddStream(cfg); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	// collect existing subjects
+	present := make(map[string]struct{}, len(js.Config.Subjects))
+	for _, s := range js.Config.Subjects {
+		present[s] = struct{}{}
+	}
+
+	// add subjects which are not present
+	for _, s := range cfg.Subjects {
+		if _, ok := present[s]; !ok {
+			js.Config.Subjects = append(js.Config.Subjects, s)
+		}
+	}
+
+	if _, err = p.conn.JetStreamContext().UpdateStream(&js.Config); err != nil {
 		return err
 	}
+
 	return nil
 }
 
