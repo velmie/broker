@@ -31,11 +31,11 @@ type GroupNamerFactoryFunc func(stream, subject string) GroupNamer
 
 // Options represents Subscriber options
 type Options struct {
-	connOpts    []conn.Option
-	subFactory  SubscriptionFactoryFunc
-	consFactory ConsumerFactoryFunc
+	connOpts        []conn.Option
+	subFactory      SubscriptionFactoryFunc
+	consFactory     ConsumerFactoryFunc
 	grpNamerFactory GroupNamerFactoryFunc
-	conn        *conn.Connection
+	conn            *conn.Connection
 }
 
 // Option allows to set Subscriber options
@@ -95,15 +95,17 @@ func DefaultSubscriptionFactory() SubscriptionFactoryFunc {
 	}
 }
 
-// DefaultConsumerFactory can be used for consumer creation. It creates consumer with name and durable retrieved from
-// GroupNamer method Name and DeliverLastPolicy
+// DefaultConsumerFactory can be used for consumer creation. It creates consumer with name, durable, dlv. group and dlb. subject
+// retrieved from GroupNamer method Name, DeliverLastPolicy and AckExplicitPolicy
 func DefaultConsumerFactory() ConsumerFactoryFunc {
 	return func(subject string, namer GroupNamer) *nats.ConsumerConfig {
 		return &nats.ConsumerConfig{
-			Name:          namer.Name(),
-			Durable:       namer.Name(),
-			DeliverPolicy: nats.DeliverLastPolicy,
-			AckPolicy:     nats.AckExplicitPolicy,
+			Name:           namer.Name(),
+			Durable:        namer.Name(),
+			DeliverGroup:   namer.Name(),
+			DeliverSubject: subject,
+			DeliverPolicy:  nats.DeliverLastPolicy,
+			AckPolicy:      nats.AckExplicitPolicy,
 		}
 	}
 }
