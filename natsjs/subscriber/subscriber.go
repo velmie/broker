@@ -11,16 +11,19 @@ import (
 
 // Subscriber represents event subscriber
 type Subscriber struct {
-	stream      string
-	conn        *conn.Connection
-	subFactory  SubscriptionFactoryFunc
-	consFactory ConsumerFactoryFunc
-	grpNamer    GroupNamer
+	stream          string
+	conn            *conn.Connection
+	subFactory      SubscriptionFactoryFunc
+	consFactory     ConsumerFactoryFunc
+	grpNamerFactory GroupNamerFactoryFunc
 }
 
 // Connect establish conn.Connection from Subscriber to NATS server with Option(s) specified
 func Connect(stream string, opts ...Option) (s *Subscriber, err error) {
-	o := &Options{subFactory: DefaultSubscriptionFactory()}
+	o := &Options{
+		subFactory:      DefaultSubscriptionFactory(),
+		grpNamerFactory: DefaultGroupNamerFactory(),
+	}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(o)
@@ -28,9 +31,10 @@ func Connect(stream string, opts ...Option) (s *Subscriber, err error) {
 	}
 
 	s = &Subscriber{
-		stream:      stream,
-		subFactory:  o.subFactory,
-		consFactory: o.consFactory,
+		stream:          stream,
+		subFactory:      o.subFactory,
+		consFactory:     o.consFactory,
+		grpNamerFactory: o.grpNamerFactory,
 	}
 
 	// reuse connection
@@ -56,7 +60,7 @@ func (s *Subscriber) Subscribe(
 		return nil, err
 	}
 
-	scb := s.subFactory(subj, s.subscriptionNamer(subj))
+	scb := s.subFactory(subj, s.grpNamerFactory(s.stream, subj))
 
 	// build subscription and start listening
 	ns, err := scb.subscribe(s.conn.JetStreamContext(), handler, options...)
@@ -87,7 +91,7 @@ func (s *Subscriber) createConsumer(subj string) error {
 		return nil
 	}
 
-	cfg := s.consFactory(s.stream, s.subscriptionNamer(subj))
+	cfg := s.consFactory(s.stream, s.grpNamerFactory(s.stream, subj))
 
 	_, err := s.conn.JetStreamContext().AddConsumer(s.stream, cfg)
 	if err != nil {
@@ -97,11 +101,4 @@ func (s *Subscriber) createConsumer(subj string) error {
 		return err
 	}
 	return nil
-}
-
-func (s *Subscriber) subscriptionNamer(subj string) GroupNamer {
-	if s.grpNamer != nil {
-		return s.grpNamer
-	}
-	return &DefaultConsumerGroupNamer{Stream: s.stream, Subject: subj}
 }
