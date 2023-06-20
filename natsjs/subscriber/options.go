@@ -26,13 +26,16 @@ type SubscriptionFactoryFunc func(subject string, namer GroupNamer) Subscriptor
 // ConsumerFactoryFunc defines behavior for consumers construction
 type ConsumerFactoryFunc func(subject string, namer GroupNamer) *nats.ConsumerConfig
 
+// GroupNamerFactoryFunc defines behavior for consumer group namer construction
+type GroupNamerFactoryFunc func(stream, subject string) GroupNamer
+
 // Options represents Subscriber options
 type Options struct {
 	connOpts    []conn.Option
 	subFactory  SubscriptionFactoryFunc
 	consFactory ConsumerFactoryFunc
+	grpNamerFactory GroupNamerFactoryFunc
 	conn        *conn.Connection
-	grpNamer    GroupNamer
 }
 
 // Option allows to set Subscriber options
@@ -70,12 +73,10 @@ func ConsumerFactory(cf ConsumerFactoryFunc) Option {
 	}
 }
 
-// ConsumerGroupNamer allows to set subscription namer. If nothing is specified DefaultSubscriptionNamer will be used.
-// Your own subscription namer can be implemented via embedding of DefaultSubscriptionNamer into your struct and
-// redefinition of methods
-func ConsumerGroupNamer(namer GroupNamer) Option {
+// ConsumerGroupNamerFactory allows to set subscription group namer factory. If nothing is specified DefaultGroupNamerFactory will be used.
+func ConsumerGroupNamerFactory(nf GroupNamerFactoryFunc) Option {
 	return func(o *Options) {
-		o.grpNamer = namer
+		o.grpNamerFactory = nf
 	}
 }
 
@@ -104,6 +105,13 @@ func DefaultConsumerFactory() ConsumerFactoryFunc {
 			DeliverPolicy: nats.DeliverLastPolicy,
 			AckPolicy:     nats.AckExplicitPolicy,
 		}
+	}
+}
+
+// DefaultGroupNamerFactory allows to define construction of GroupNamer
+func DefaultGroupNamerFactory() GroupNamerFactoryFunc {
+	return func(stream, subject string) GroupNamer {
+		return &DefaultConsumerGroupNamer{Stream: stream, Subject: subject}
 	}
 }
 
