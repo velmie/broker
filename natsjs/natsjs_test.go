@@ -459,7 +459,7 @@ func TestSubscriber_MultipleAsyncSubscribers(t *testing.T) {
 		errCh <- err
 	}
 
-	subFactory := func(stream string, subj string) subscriber.Subscriptor {
+	subFactory := func(subj string, _ subscriber.GroupNamer) subscriber.Subscriptor {
 		return subscriber.AsyncSubscription().Subject(subj)
 	}
 
@@ -542,7 +542,7 @@ func TestSubscriber_SyncSubscription(t *testing.T) {
 		errCh <- err
 	}
 
-	subFactory := func(stream string, subj string) subscriber.Subscriptor {
+	subFactory := func(subj string, _ subscriber.GroupNamer) subscriber.Subscriptor {
 		return subscriber.SyncSubscription().Subject(subj)
 	}
 
@@ -610,7 +610,7 @@ func TestSubscriber_LostConnection(t *testing.T) {
 	}
 	defer pub.Close()
 
-	subFactory := func(stream string, subj string) subscriber.Subscriptor {
+	subFactory := func(subj string, _ subscriber.GroupNamer) subscriber.Subscriptor {
 		return subscriber.PullSubscription().
 			Subject(subj).
 			Durable(durable).
@@ -713,7 +713,7 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 	defer pub.Close()
 
 	// create the same consumer for both subscriptions
-	consFactory := func(stream string, subj string) *nats.ConsumerConfig {
+	consFactory := func(subj string, namer subscriber.GroupNamer) *nats.ConsumerConfig {
 		return &nats.ConsumerConfig{
 			Name:          consumer,
 			Durable:       consumer,
@@ -722,7 +722,7 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 		}
 	}
 
-	subFactory := func(stream string, subj string) subscriber.Subscriptor {
+	subFactory := func(subj string, namer subscriber.GroupNamer) subscriber.Subscriptor {
 		return subscriber.PullSubscription().
 			Subject(subj).
 			Durable(consumer).

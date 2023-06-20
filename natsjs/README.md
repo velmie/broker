@@ -48,7 +48,7 @@ Please, see below some short explanation about options specified above:
 * `conn.NATSOptions` - represents connection options from standard library. Please, see [nats.Option](https://pkg.go.dev/github.com/nats-io/nats.go#Option) for more details and full list of available options;
 * `conn.JetStreamContextOptions` - are used to configure JetStreamContext. Please, see [nats.JSOpt](https://pkg.go.dev/github.com/nats-io/nats.go#JSOpt) for more details and full list of available options;
 * `conn.NoWaitFailedConnectRetry` - special option used in conjunction with [nats.RetryOnFailedConnect](https://pkg.go.dev/github.com/nats-io/nats.go#RetryOnFailedConnect). If `RetryOnFailedConnect` options is set and server can't be reached, connection will be set to `RECONNECTING` state and no error returned, `JetStreamContext` will be created as well and all subsequent requests will be buffered until connection is not in `CONNECTED` state or timeout is raised and error is returned. Package overcome this behavior by checking state of connection every `nats.ReconnectWait` and, as soon as state is `CONNECTED`, healthy connection is returned or if state is `CLOSED` (connection timeout) error returned. By specifying `NoWaitFailedConnectRetry` option you disable awaiting behavior and proceed with connection procedure of standard Go client. Please, note that in this case you are responsible for all JetStreams or Consumers initialization and handling any errors occurred because of `RECONNECTING` state. Some actions can be moved, for instance, to `ConnectedCB`. (Please, see ConnectedCB in [nats.Options](https://pkg.go.dev/github.com/nats-io/nats.go#Options)).
-
+* `publisher.UseConnection` / `subscriber.UseConnection` - allows to reuse existing connection on subscriber/publisher initialization. As soon as publisher/subscriber instance is constructed there is a possibility to call `Connection` method for its retrieval.
 ### Publisher options
 There are some options specific to publisher:
 ```go
@@ -97,10 +97,10 @@ const (
 	consumer = "NATSJS-CSM"
 )
 
-subFactory := func(stream string, subj string) subscriber.Subscriptor {
+subFactory := func(subj string, namer subscriber.GroupNamer) subscriber.Subscriptor {
     return subscriber.PullSubscription().
         Subject(subj).
-        Durable(consumer).
+        Durable(namer.Name()).
         SubOptions(
             nats.DeliverLast(),
             nats.AckExplicit(),
@@ -108,10 +108,10 @@ subFactory := func(stream string, subj string) subscriber.Subscriptor {
         )
 }
 
-consFactory := func(stream string, subj string) *nats.ConsumerConfig {
+consFactory := func(subj string, namer subscriber.GroupNamer) *nats.ConsumerConfig {
     return &nats.ConsumerConfig{
-        Name:          consumer,
-        Durable:       consumer,
+        Name:          namer.Name(),
+        Durable:       namer.Name(),
         DeliverPolicy: nats.DeliverLastPolicy,
         AckPolicy:     nats.AckExplicitPolicy,
     }
@@ -125,7 +125,7 @@ sub, err := subscriber.Connect(
 )
 ```
 Please, see below some short explanation about options specified above:
-* `subscriber.SubscriptionFactory` - defines the logic for building subscriptions based on stream and subject names or any other user defined criteria. The goal of logic within function is to return `subscriber.Subscriptor` which is used to init subscription. If nothing is specified, `subscriber.DefaultSubscriptionFactory` is used (constructs pull consumers). Package provides various of built-in subscriptions builders: `subscriber.PullSubscription()`, `subscriber.SyncQueueSubscription()`, `subscriber.AsyncQueueSubscription()`, `subscriber.SyncSubscription()`, `subscriber.AsyncSubscription()`;
+* `subscriber.SubscriptionFactory` - defines the logic for building subscriptions based on stream and subject names or any other user defined criteria. The goal of logic within function is to return `subscriber.Subscriptor` which is used to init subscription. If nothing is specified, `subscriber.DefaultSubscriptionFactory` is used (constructs queue push consumers). Package provides various of built-in subscriptions builders: `subscriber.PullSubscription()`, `subscriber.SyncQueueSubscription()`, `subscriber.AsyncQueueSubscription()`, `subscriber.SyncSubscription()`, `subscriber.AsyncSubscription()`;
 * `subscriber.ConsumerFactory` - defines the way consumers are created before subscribing. Again, it is recommended to define topology before communication and don't delegate this responsibility to client. If consumer with the same name is already present no action will be taken. Package doesn't have any default consumer factory, so if nothing is specified here, consumers will be created according to NATS Go client rules on subscription initialization.
 
 ## Publishing messages
@@ -176,7 +176,7 @@ const (
     subject = "NATSJS.subj.created"
 )
 
-subFactory := func(stream string, subj string) subscriber.Subscriptor {
+subFactory := func(subj string, _ subscriber.GroupNamer) subscriber.Subscriptor {
     return subscriber.SyncSubscription().Subject(subj)
 }
 
