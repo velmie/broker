@@ -239,7 +239,7 @@ func TestPublisher_InitStream(t *testing.T) {
 	}
 }
 
-func TestSubscriber_DefaultPullSubscriber(t *testing.T) {
+func TestSubscriber_DefaultAsyncQueueSubscriber(t *testing.T) {
 	const (
 		stream  = "PULL-SUB"
 		subject = "pull.new"
@@ -266,6 +266,7 @@ func TestSubscriber_DefaultPullSubscriber(t *testing.T) {
 	sub, err := subscriber.Connect(
 		stream,
 		subscriber.SubscriptionFactory(subscriber.DefaultSubscriptionFactory()),
+		subscriber.ConsumerFactory(subscriber.DefaultConsumerFactory()),
 	)
 	if err != nil {
 		t.Fatalf("failed to connect subscriber to NATS server: %v", err)
