@@ -15,10 +15,11 @@ type Subscriber struct {
 	conn        *conn.Connection
 	subFactory  SubscriptionFactoryFunc
 	consFactory ConsumerFactoryFunc
+	grpNamer    GroupNamer
 }
 
 // Connect establish conn.Connection from Subscriber to NATS server with Option(s) specified
-func Connect(stream string, opts ...Option) (*Subscriber, error) {
+func Connect(stream string, opts ...Option) (s *Subscriber, err error) {
 	o := &Options{subFactory: DefaultSubscriptionFactory()}
 	for _, opt := range opts {
 		if opt != nil {
@@ -26,17 +27,23 @@ func Connect(stream string, opts ...Option) (*Subscriber, error) {
 		}
 	}
 
-	conn, err := conn.Establish(o.connOpts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Subscriber{
+	s = &Subscriber{
 		stream:      stream,
-		conn:        conn,
 		subFactory:  o.subFactory,
 		consFactory: o.consFactory,
-	}, nil
+	}
+
+	// reuse connection
+	if o.conn != nil {
+		s.conn = o.conn
+	} else {
+		s.conn, err = conn.Establish(o.connOpts...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return s, nil
 }
 
 // Subscribe creates subscription on corresponding subject
@@ -49,7 +56,7 @@ func (s *Subscriber) Subscribe(
 		return nil, err
 	}
 
-	scb := s.subFactory(s.stream, subj)
+	scb := s.subFactory(subj, s.subscriptionNamer(subj))
 
 	// build subscription and start listening
 	ns, err := scb.subscribe(s.conn.JetStreamContext(), handler, options...)
@@ -65,8 +72,14 @@ func (s *Subscriber) Close() {
 	s.conn.Close()
 }
 
+// Drain drains connection. Refer to nats.Conn #Drain
 func (s *Subscriber) Drain() error {
 	return s.conn.Drain()
+}
+
+// Connection returns connection to NATS
+func (s *Subscriber) Connection() *conn.Connection {
+	return s.conn
 }
 
 func (s *Subscriber) createConsumer(subj string) error {
@@ -74,7 +87,7 @@ func (s *Subscriber) createConsumer(subj string) error {
 		return nil
 	}
 
-	cfg := s.consFactory(s.stream, subj)
+	cfg := s.consFactory(s.stream, s.subscriptionNamer(subj))
 
 	_, err := s.conn.JetStreamContext().AddConsumer(s.stream, cfg)
 	if err != nil {
@@ -84,4 +97,11 @@ func (s *Subscriber) createConsumer(subj string) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Subscriber) subscriptionNamer(subj string) GroupNamer {
+	if s.grpNamer != nil {
+		return s.grpNamer
+	}
+	return &DefaultConsumerGroupNamer{Stream: s.stream, Subject: subj}
 }

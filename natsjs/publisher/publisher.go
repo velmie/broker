@@ -16,7 +16,7 @@ type Publisher struct {
 }
 
 // Connect establish conn.Connection from Publisher to NATS server with Option(s) specified
-func Connect(opts ...Option) (*Publisher, error) {
+func Connect(opts ...Option) (p *Publisher, err error) {
 	o := &Options{}
 	for _, opt := range opts {
 		if opt != nil {
@@ -24,14 +24,18 @@ func Connect(opts ...Option) (*Publisher, error) {
 		}
 	}
 
-	conn, err := conn.Establish(o.connOpts...)
-	if err != nil {
-		return nil, err
+	p = &Publisher{
+		pubOpts: o.pubOpts,
 	}
 
-	p := &Publisher{
-		conn:    conn,
-		pubOpts: o.pubOpts,
+	// reuse connection
+	if o.conn != nil {
+		p.conn = o.conn
+	} else {
+		p.conn, err = conn.Establish(o.connOpts...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if o.jsCfg != nil {
@@ -63,6 +67,11 @@ func (p *Publisher) Close() {
 // Drain drains connection. Refer to nats.Conn #Drain
 func (p *Publisher) Drain() error {
 	return p.conn.Drain()
+}
+
+// Connection returns connection to NATS
+func (p *Publisher) Connection() *conn.Connection {
+	return p.conn
 }
 
 func (p *Publisher) createJetStream(cfg *nats.StreamConfig) error {

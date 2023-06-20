@@ -15,17 +15,24 @@ type Subscriptor interface {
 	subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error)
 }
 
+// ConsumerGroupNamer defines behavior for retrieval of queue/durable names
+type GroupNamer interface {
+	Name() string
+}
+
 // SubscriptionFactoryFunc defines behavior for subscriptions construction
-type SubscriptionFactoryFunc func(stream string, subj string) Subscriptor
+type SubscriptionFactoryFunc func(subject string, namer GroupNamer) Subscriptor
 
 // ConsumerFactoryFunc defines behavior for consumers construction
-type ConsumerFactoryFunc func(stream string, subj string) *nats.ConsumerConfig
+type ConsumerFactoryFunc func(subject string, namer GroupNamer) *nats.ConsumerConfig
 
 // Options represents Subscriber options
 type Options struct {
 	connOpts    []conn.Option
 	subFactory  SubscriptionFactoryFunc
 	consFactory ConsumerFactoryFunc
+	conn        *conn.Connection
+	grpNamer    GroupNamer
 }
 
 // Option allows to set Subscriber options
@@ -35,6 +42,13 @@ type Option func(options *Options)
 func ConnectionOptions(opts ...conn.Option) Option {
 	return func(o *Options) {
 		o.connOpts = append(o.connOpts, opts...)
+	}
+}
+
+// UseConnection allows to reuse existing connection for subscriber
+func UseConnection(c *conn.Connection) Option {
+	return func(o *Options) {
+		o.conn = c
 	}
 }
 
@@ -56,16 +70,22 @@ func ConsumerFactory(cf ConsumerFactoryFunc) Option {
 	}
 }
 
-// DefaultSubscriptionFactory is subscription factory used if nothing is set. It constructs pull consumer with
-// DeliveryLast, AckExplicit, ReplayInstant policies. Durable name is constructed as "{stream}-{subject}" normalized -
-// all '*','>','.' and space symbols are replaced with '-'
-func DefaultSubscriptionFactory() SubscriptionFactoryFunc {
-	return func(stream string, subj string) Subscriptor {
-		drb := normalizedDurable(fmt.Sprintf("%s-%s", stream, subj))
+// ConsumerGroupNamer allows to set subscription namer. If nothing is specified DefaultSubscriptionNamer will be used.
+// Your own subscription namer can be implemented via embedding of DefaultSubscriptionNamer into your struct and
+// redefinition of methods
+func ConsumerGroupNamer(namer GroupNamer) Option {
+	return func(o *Options) {
+		o.grpNamer = namer
+	}
+}
 
-		return PullSubscription().
+// DefaultSubscriptionFactory is subscription factory used if nothing is set. It constructs async queue push consumer with
+// DeliveryLast, AckExplicit, ReplayInstant policies. Queue name is constructed via call to GroupName of SubNamer
+func DefaultSubscriptionFactory() SubscriptionFactoryFunc {
+	return func(subj string, grpNamer GroupNamer) Subscriptor {
+		return AsyncQueueSubscription().
 			Subject(subj).
-			Durable(drb).
+			Queue(grpNamer.Name()).
 			SubOptions(
 				nats.DeliverLast(),
 				nats.AckExplicit(),
@@ -74,7 +94,27 @@ func DefaultSubscriptionFactory() SubscriptionFactoryFunc {
 	}
 }
 
-func normalizedDurable(drb string) string {
+// DefaultConsumerFactory can be used for consumer creation. It creates consumer with name and durable retrieved from
+// GroupNamer method Name and DeliverLastPolicy
+func DefaultConsumerFactory() ConsumerFactoryFunc {
+	return func(subject string, namer GroupNamer) *nats.ConsumerConfig {
+		return &nats.ConsumerConfig{
+			Name:          namer.Name(),
+			Durable:       namer.Name(),
+			DeliverPolicy: nats.DeliverLastPolicy,
+			AckPolicy:     nats.AckExplicitPolicy,
+		}
+	}
+}
+
+// DefaultConsumerGroupNamer is default consumer group namer used if nothing is set.
+type DefaultConsumerGroupNamer struct {
+	Stream  string
+	Subject string
+}
+
+func (n *DefaultConsumerGroupNamer) Name() string {
+	name := fmt.Sprintf("%s-%s", n.Stream, n.Subject)
 	exp := regexp.MustCompile("[*>. ]")
-	return string(exp.ReplaceAll([]byte(drb), []byte("-")))
+	return string(exp.ReplaceAll([]byte(name), []byte("-")))
 }

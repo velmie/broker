@@ -11,6 +11,7 @@ type Options struct {
 	connOpts []conn.Option
 	jsCfg    *nats.StreamConfig
 	pubOpts  []nats.PubOpt
+	conn     *conn.Connection
 }
 
 // Option allows to set Publisher options
@@ -35,5 +36,12 @@ func PubOptions(opts ...nats.PubOpt) Option {
 func InitJetStream(cfg *nats.StreamConfig) Option {
 	return func(o *Options) {
 		o.jsCfg = cfg
+	}
+}
+
+// UseConnection allows to reuse existing connection for publisher
+func UseConnection(c *conn.Connection) Option {
+	return func(o *Options) {
+		o.conn = c
 	}
 }
