@@ -791,3 +791,107 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 		t.Fatalf("failed to get consumer info: %v", err)
 	}
 }
+
+func TestSubscriber_NackDelay(t *testing.T) {
+	const (
+		stream  = "NACK-DELAY"
+		subject = "nackdelaysubj.new"
+
+		maxRedeliver = 3
+		nackDelay    = 2 * time.Second
+	)
+
+	// just for stream init
+	pub, err := publisher.Connect(
+		publisher.InitJetStream(&nats.StreamConfig{
+			Name:      stream,
+			Subjects:  []string{"nackdelaysubj.>"},
+			Retention: nats.InterestPolicy,
+		}),
+	)
+	if err != nil {
+		t.Fatalf("failed to connect publisher to NATS server: %v", err)
+	}
+	defer pub.Close()
+
+	// create the same consumer for both subscriptions
+	consFactory := func(subj string, namer subscriber.GroupNamer) *nats.ConsumerConfig {
+		return &nats.ConsumerConfig{
+			Name:           namer.Name(),
+			Durable:        namer.Name(),
+			DeliverGroup:   namer.Name(),
+			DeliverSubject: namer.Name(),
+			DeliverPolicy:  nats.DeliverLastPolicy,
+			AckPolicy:      nats.AckExplicitPolicy,
+			MaxDeliver:     maxRedeliver,
+		}
+	}
+
+	subFactory := func(subj string, namer subscriber.GroupNamer) subscriber.Subscriptor {
+		return subscriber.AsyncQueueSubscription().
+			Subject(subj).
+			NackDelay(nackDelay).
+			SubOptions(
+				nats.DeliverLast(),
+				nats.AckExplicit(),
+				nats.ReplayInstant(),
+			)
+	}
+
+	sub, err := subscriber.Connect(
+		stream,
+		subscriber.ConsumerFactory(consFactory),
+		subscriber.SubscriptionFactory(subFactory),
+	)
+	if err != nil {
+		t.Fatalf("failed to connect subscriber to NATS server: %v", err)
+	}
+	defer sub.Close()
+
+	var retried atomic.Int32
+	finishCh := make(chan struct{})
+	startTime := time.Now()
+
+	handler := func(evt broker.Event) error {
+		n := retried.Load()
+		t.Logf("%d message has been retrieved after %s", n+1, time.Since(startTime))
+
+		if n == maxRedeliver {
+			t.Fatalf("message has been processed more than specifed max deliver entry: %v", err)
+		}
+
+		if n == maxRedeliver-1 {
+			finishCh <- struct{}{}
+		}
+
+		retried.Add(1)
+		return errors.New("error for nack")
+	}
+
+	ns1, err := sub.Subscribe(subject, handler)
+	if err != nil {
+		t.Fatalf("failed to create subscription: %v", err)
+	}
+	defer ns1.Unsubscribe()
+
+	err = pub.Publish(subject, &broker.Message{
+		ID:   "random-id",
+		Body: []byte("random message"),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// wait for message to be retrieved and processed
+	select {
+	case <-ctx.Done():
+		t.Fatal("test is running for too long")
+	case <-finishCh:
+		break
+	}
+
+	// wait time must be at least equal to max possible delay of retries
+	if sinceStarted, minDelay := time.Since(startTime), nackDelay; sinceStarted < minDelay {
+		t.Fatalf("overal execution must take at least %s but finished after %s", minDelay, sinceStarted)
+	}
+}
