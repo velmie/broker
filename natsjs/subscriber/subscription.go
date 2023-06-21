@@ -2,6 +2,7 @@ package subscriber
 
 import (
 	"errors"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/velmie/broker"
@@ -11,9 +12,10 @@ import (
 type subscription struct {
 	subj      string
 	doubleAck bool
+	nackDelay time.Duration
 	nsub      *nats.Subscription
+	ackOpts   []nats.AckOpt
 	*broker.DefaultSubscription
-	ackOpts []nats.AckOpt
 }
 
 // Unsubscribe unsubscribes from subject and closes subscription
@@ -56,7 +58,11 @@ func (s *subscription) msgHandler(m *nats.Msg) {
 	if autoAck {
 		// we can't handle ack/nack errors
 		if err != nil {
-			m.Nak(s.ackOpts...)
+			if s.nackDelay > 0 {
+				m.NakWithDelay(s.nackDelay, s.ackOpts...)
+			} else {
+				m.Nak(s.ackOpts...)
+			}
 			return
 		}
 

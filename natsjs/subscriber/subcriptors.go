@@ -2,6 +2,7 @@ package subscriber
 
 import (
 	"errors"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/velmie/broker"
@@ -14,6 +15,7 @@ type subscriptor struct {
 	doubleAck bool
 	subOpts   []nats.SubOpt
 	ackOpts   []nats.AckOpt
+	nackDelay time.Duration
 }
 
 type pullSubscription struct {
@@ -72,6 +74,12 @@ func (s *pullSubscription) DoubleAck(da bool) *pullSubscription {
 	return s
 }
 
+// NackDelay specifies the delay for server while trying to resend message after nack
+func (s *pullSubscription) NackDelay(delay time.Duration) *pullSubscription {
+	s.nackDelay = delay
+	return s
+}
+
 func (s *pullSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	if s.batch <= 0 {
 		return nil, errors.New("pull subscriber batch must be greater than zero")
@@ -90,6 +98,7 @@ func (s *pullSubscription) subscribe(js nats.JetStreamContext, h broker.Handler,
 		nsub:                nsub,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
+		nackDelay:           s.nackDelay,
 	}
 
 	// start goroutine for handling messages pull
@@ -138,6 +147,12 @@ func (s *syncQueueSubscription) DoubleAck(da bool) *syncQueueSubscription {
 	return s
 }
 
+// NackDelay specifies the delay for server while trying to resend message after nack
+func (s *syncQueueSubscription) NackDelay(delay time.Duration) *syncQueueSubscription {
+	s.nackDelay = delay
+	return s
+}
+
 func (s *syncQueueSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	subOpts := append(s.subOpts, nats.ManualAck())
 
@@ -152,6 +167,7 @@ func (s *syncQueueSubscription) subscribe(js nats.JetStreamContext, h broker.Han
 		nsub:                nsub,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
+		nackDelay:           s.nackDelay,
 	}
 
 	return ns, nil
@@ -197,6 +213,12 @@ func (s *asyncQueueSubscription) DoubleAck(da bool) *asyncQueueSubscription {
 	return s
 }
 
+// NackDelay specifies the delay for server while trying to resend message after nack
+func (s *asyncQueueSubscription) NackDelay(delay time.Duration) *asyncQueueSubscription {
+	s.nackDelay = delay
+	return s
+}
+
 func (s *asyncQueueSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	subOpts := append(s.subOpts, nats.ManualAck())
 
@@ -205,6 +227,7 @@ func (s *asyncQueueSubscription) subscribe(js nats.JetStreamContext, h broker.Ha
 		doubleAck:           s.doubleAck,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
+		nackDelay:           s.nackDelay,
 	}
 
 	nsub, err := js.QueueSubscribe(s.subj, s.queue, ns.msgHandler, subOpts...)
@@ -249,6 +272,12 @@ func (s *syncSubscription) DoubleAck(da bool) *syncSubscription {
 	return s
 }
 
+// NackDelay specifies the delay for server while trying to resend message after nack
+func (s *syncSubscription) NackDelay(delay time.Duration) *syncSubscription {
+	s.nackDelay = delay
+	return s
+}
+
 func (s *syncSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	subOpts := append(s.subOpts, nats.ManualAck())
 
@@ -263,6 +292,7 @@ func (s *syncSubscription) subscribe(js nats.JetStreamContext, h broker.Handler,
 		nsub:                nsub,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
+		nackDelay:           s.nackDelay,
 	}
 
 	return ns, nil
@@ -301,6 +331,12 @@ func (s *asyncSubscription) DoubleAck(da bool) *asyncSubscription {
 	return s
 }
 
+// NackDelay specifies the delay for server while trying to resend message after nack
+func (s *asyncSubscription) NackDelay(delay time.Duration) *asyncSubscription {
+	s.nackDelay = delay
+	return s
+}
+
 func (s *asyncSubscription) subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error) {
 	subOpts := append(s.subOpts, nats.ManualAck())
 
@@ -309,6 +345,7 @@ func (s *asyncSubscription) subscribe(js nats.JetStreamContext, h broker.Handler
 		doubleAck:           s.doubleAck,
 		DefaultSubscription: brokerSubscription(s.subj, h, opts...),
 		ackOpts:             s.ackOpts,
+		nackDelay:           s.nackDelay,
 	}
 
 	nsub, err := js.Subscribe(s.subj, ns.msgHandler, subOpts...)
