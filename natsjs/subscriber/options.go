@@ -103,7 +103,7 @@ func DefaultConsumerFactory() ConsumerFactoryFunc {
 			Name:           namer.Name(),
 			Durable:        namer.Name(),
 			DeliverGroup:   namer.Name(),
-			DeliverSubject: subject,
+			DeliverSubject: namer.Name(),
 			DeliverPolicy:  nats.DeliverLastPolicy,
 			AckPolicy:      nats.AckExplicitPolicy,
 		}
