@@ -3,6 +3,7 @@ package subscriber
 import (
 	"fmt"
 	"regexp"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/velmie/broker"
@@ -87,6 +88,7 @@ func DefaultSubscriptionFactory() SubscriptionFactoryFunc {
 		return AsyncQueueSubscription().
 			Subject(subj).
 			Queue(grpNamer.Name()).
+			NackDelay(30*time.Second).
 			SubOptions(
 				nats.DeliverLast(),
 				nats.AckExplicit(),
@@ -106,6 +108,9 @@ func DefaultConsumerFactory() ConsumerFactoryFunc {
 			DeliverSubject: namer.Name(),
 			DeliverPolicy:  nats.DeliverLastPolicy,
 			AckPolicy:      nats.AckExplicitPolicy,
+			// We choose 20160 because we use 30sec NackDelay() and it is equal to MaxAge of messages:
+			// 20160 = 7days(604800s) / 30s
+			MaxDeliver: 20160,
 		}
 	}
 }
