@@ -120,11 +120,13 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	if err = srv.purge(); err != nil {
-		log.Fatalf("failed to purge docker resources: %v", err)
-	}
+	defer func() {
+		if err = srv.purge(); err != nil {
+			log.Fatalf("failed to purge docker resources: %v", err)
+		}
 
-	os.Exit(code)
+		os.Exit(code)
+	}()
 }
 
 func TestPublisher_WaitFailedConnectRetry(t *testing.T) {

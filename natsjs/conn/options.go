@@ -1,6 +1,10 @@
 package conn
 
-import "github.com/nats-io/nats.go"
+import (
+	"time"
+
+	"github.com/nats-io/nats.go"
+)
 
 // Options represents options for NATS server Connection and nats.JetStreamContext
 type Options struct {
@@ -41,4 +45,17 @@ func NoWaitFailedConnectRetry() Option {
 	return func(o *Options) {
 		o.noWait = true
 	}
+}
+
+func DefaultConnection(url string) (*Connection, error) {
+	return Establish(
+		URL(url),
+		NATSOptions(
+			nats.MaxReconnects(-1),
+			nats.ReconnectWait(5*time.Second),
+			nats.Timeout(5*time.Second),
+			nats.DrainTimeout(20*time.Second),
+			nats.RetryOnFailedConnect(true),
+		),
+	)
 }
