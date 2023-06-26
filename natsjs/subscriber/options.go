@@ -108,6 +108,7 @@ func DefaultConsumerFactory() ConsumerFactoryFunc {
 			DeliverSubject: namer.Name(),
 			DeliverPolicy:  nats.DeliverLastPolicy,
 			AckPolicy:      nats.AckExplicitPolicy,
+			FilterSubject:  subject,
 			// We choose 20160 because we use 30sec NackDelay() and it is equal to MaxAge of messages:
 			// 20160 = 7days(604800s) / 30s
 			MaxDeliver: 20160,
