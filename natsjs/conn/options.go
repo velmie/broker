@@ -53,9 +53,32 @@ func DefaultConnection(url string) (*Connection, error) {
 		NATSOptions(
 			nats.MaxReconnects(-1),
 			nats.ReconnectWait(5*time.Second),
-			nats.Timeout(5*time.Second),
+			nats.Timeout(2*time.Second),
 			nats.DrainTimeout(20*time.Second),
-			nats.RetryOnFailedConnect(true),
+			nats.RetryOnFailedConnect(false),
+		),
+	)
+}
+
+func DefaultConnectionWithLogger(url string, logger Logger) (*Connection, error) {
+	return Establish(
+		URL(url),
+		NATSOptions(
+			nats.MaxReconnects(-1),
+			nats.ReconnectWait(2*time.Second),
+			nats.Timeout(2*time.Second),
+			nats.DrainTimeout(20*time.Second),
+			nats.RetryOnFailedConnect(false),
+			nats.DisconnectErrHandler(func(conn *nats.Conn, err error) {
+				if err != nil {
+					logger.Warningf("NATS connection lost; err: %s", err.Error())
+					return
+				}
+				logger.Warning("NATS connection lost; error is empty")
+			}),
+			nats.ReconnectHandler(func(conn *nats.Conn) {
+				logger.Info("NATS connection established again")
+			}),
 		),
 	)
 }

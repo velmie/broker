@@ -2,6 +2,7 @@ package subscriber
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/nats-io/nats.go"
 	"github.com/velmie/broker"
@@ -100,5 +101,13 @@ func (s *Subscriber) createConsumer(subj string) error {
 		}
 		return err
 	}
+
+	// If consumer was already created by some previous calls, and we want to change its configuration,
+	// we have to Update the consumer.
+	_, err = s.conn.JetStreamContext().UpdateConsumer(s.stream, cfg)
+	if err != nil {
+		return fmt.Errorf("cannot update consumer; err: %w", err)
+	}
+
 	return nil
 }
