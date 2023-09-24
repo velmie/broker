@@ -85,7 +85,7 @@ func (s *subscription) brokerMsg(m *nats.Msg) *broker.Message {
 	}
 
 	return &broker.Message{
-		ID:     header["natsjs-msg-id"],
+		ID:     header[nats.MsgIdHdr],
 		Header: header,
 		Body:   m.Data,
 	}

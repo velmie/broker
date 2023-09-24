@@ -334,7 +334,7 @@ func TestSubscriber_DefaultAsyncQueueSubscriber(t *testing.T) {
 		data: "random-data",
 		header: map[string]string{
 			"random-header": "random-header-value",
-			"natsjs-msg-id": "random-id",
+			nats.MsgIdHdr:   "random-id",
 		},
 	}
 
@@ -701,8 +701,8 @@ func TestSubscriber_LostConnection(t *testing.T) {
 		t.Fatalf("failed to unpause server container: %v", err)
 	}
 
-	// publish normal message
-	err = pub.Publish(subject, &broker.Message{ID: "test-id"})
+	// publish normal message with new id b/c NATS deduplicates messages based on their identifiers
+	err = pub.Publish(subject, &broker.Message{ID: "test-id-2"})
 	if err != nil {
 		t.Fatalf("failed to publish message to subject %s: %v", subject, err)
 	}

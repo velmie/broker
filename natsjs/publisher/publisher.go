@@ -115,7 +115,7 @@ func (p *Publisher) toNATSMsg(subj string, m *broker.Message) *nats.Msg {
 
 	headers := make(nats.Header)
 
-	headers.Set("natsjs-msg-id", m.ID)
+	headers.Set(nats.MsgIdHdr, m.ID)
 	for k, v := range m.Header {
 		headers.Set(k, v)
 	}
