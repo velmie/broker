@@ -488,8 +488,8 @@ func TestSubscriber_MultipleAsyncSubscribers(t *testing.T) {
 		errCh <- err
 	}
 
-	subFactory := func(subj string, _ subscriber.GroupNamer) subscriber.Subscriptor {
-		return subscriber.AsyncSubscription().Subject(subj)
+	subFactory := func(subj string, _ subscriber.GroupNamer) (subscriber.Subscriptor, error) {
+		return subscriber.AsyncSubscription().Subject(subj), nil
 	}
 
 	sub, err := subscriber.Connect(
@@ -571,8 +571,8 @@ func TestSubscriber_SyncSubscription(t *testing.T) {
 		errCh <- err
 	}
 
-	subFactory := func(subj string, _ subscriber.GroupNamer) subscriber.Subscriptor {
-		return subscriber.SyncSubscription().Subject(subj)
+	subFactory := func(subj string, _ subscriber.GroupNamer) (subscriber.Subscriptor, error) {
+		return subscriber.SyncSubscription().Subject(subj), nil
 	}
 
 	sub, err := subscriber.Connect(
@@ -639,7 +639,7 @@ func TestSubscriber_LostConnection(t *testing.T) {
 	}
 	defer pub.Close()
 
-	subFactory := func(subj string, _ subscriber.GroupNamer) subscriber.Subscriptor {
+	subFactory := func(subj string, _ subscriber.GroupNamer) (subscriber.Subscriptor, error) {
 		return subscriber.PullSubscription().
 			Subject(subj).
 			Durable(durable).
@@ -648,7 +648,7 @@ func TestSubscriber_LostConnection(t *testing.T) {
 				nats.DeliverLast(),
 				nats.AckExplicit(),
 				nats.ReplayInstant(),
-			)
+			), nil
 	}
 
 	replyCh := make(chan struct{}, 1)
@@ -751,7 +751,7 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 		}
 	}
 
-	subFactory := func(subj string, namer subscriber.GroupNamer) subscriber.Subscriptor {
+	subFactory := func(subj string, namer subscriber.GroupNamer) (subscriber.Subscriptor, error) {
 		return subscriber.PullSubscription().
 			Subject(subj).
 			Durable(consumer).
@@ -759,7 +759,7 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 				nats.DeliverLast(),
 				nats.AckExplicit(),
 				nats.ReplayInstant(),
-			)
+			), nil
 	}
 
 	sub, err := subscriber.Connect(
@@ -829,7 +829,7 @@ func TestSubscriber_NackDelay(t *testing.T) {
 		}
 	}
 
-	subFactory := func(subj string, namer subscriber.GroupNamer) subscriber.Subscriptor {
+	subFactory := func(subj string, namer subscriber.GroupNamer) (subscriber.Subscriptor, error) {
 		return subscriber.AsyncQueueSubscription().
 			Subject(subj).
 			NackDelay(nackDelay).
@@ -837,7 +837,7 @@ func TestSubscriber_NackDelay(t *testing.T) {
 				nats.DeliverLast(),
 				nats.AckExplicit(),
 				nats.ReplayInstant(),
-			)
+			), nil
 	}
 
 	sub, err := subscriber.Connect(

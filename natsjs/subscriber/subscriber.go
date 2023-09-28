@@ -61,7 +61,10 @@ func (s *Subscriber) Subscribe(
 		return nil, err
 	}
 
-	scb := s.subFactory(subj, s.grpNamerFactory(s.stream, subj))
+	scb, err := s.subFactory(subj, s.grpNamerFactory(s.stream, subj))
+	if err != nil {
+		return nil, err
+	}
 
 	// build subscription and start listening
 	ns, err := scb.subscribe(s.conn.JetStreamContext(), handler, options...)

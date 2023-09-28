@@ -16,13 +16,13 @@ type Subscriptor interface {
 	subscribe(js nats.JetStreamContext, h broker.Handler, opts ...broker.SubscribeOption) (*subscription, error)
 }
 
-// ConsumerGroupNamer defines behavior for retrieval of queue/durable names
+// GroupNamer defines behavior for retrieval of queue/durable names
 type GroupNamer interface {
 	Name() string
 }
 
 // SubscriptionFactoryFunc defines behavior for subscriptions construction
-type SubscriptionFactoryFunc func(subject string, namer GroupNamer) Subscriptor
+type SubscriptionFactoryFunc func(subject string, namer GroupNamer) (Subscriptor, error)
 
 // ConsumerFactoryFunc defines behavior for consumers construction
 type ConsumerFactoryFunc func(subject string, namer GroupNamer) *nats.ConsumerConfig
@@ -84,7 +84,7 @@ func ConsumerGroupNamerFactory(nf GroupNamerFactoryFunc) Option {
 // DefaultSubscriptionFactory is subscription factory used if nothing is set. It constructs async queue push consumer with
 // DeliveryLast, AckExplicit, ReplayInstant policies. Queue name is constructed via call to GroupName of SubNamer
 func DefaultSubscriptionFactory() SubscriptionFactoryFunc {
-	return func(subj string, grpNamer GroupNamer) Subscriptor {
+	return func(subj string, grpNamer GroupNamer) (Subscriptor, error) {
 		return AsyncQueueSubscription().
 			Subject(subj).
 			Queue(grpNamer.Name()).
@@ -93,7 +93,7 @@ func DefaultSubscriptionFactory() SubscriptionFactoryFunc {
 				nats.DeliverLast(),
 				nats.AckExplicit(),
 				nats.ReplayInstant(),
-			)
+			), nil
 	}
 }
 
