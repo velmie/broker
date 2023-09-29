@@ -111,12 +111,13 @@ func (s *Subscriber) createConsumer(subj string) error {
 		cfg.FilterSubject = subj
 	}
 
-	_, err = s.conn.JetStreamContext().AddConsumer(s.stream, cfg)
-	if err != nil {
-		if errors.Is(err, nats.ErrStreamNameAlreadyInUse) {
-			return nil
+	_, err = s.conn.JetStreamContext().ConsumerInfo(s.stream, cfg.Name)
+	if errors.Is(err, nats.ErrConsumerNotFound) {
+		_, err = s.conn.JetStreamContext().AddConsumer(s.stream, cfg)
+		if err != nil {
+			return err
 		}
-		return err
+		return nil
 	}
 
 	// If consumer was already created by some previous calls, and we want to change its configuration,
