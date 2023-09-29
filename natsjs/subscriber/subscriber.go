@@ -23,7 +23,7 @@ type Subscriber struct {
 func Connect(stream string, opts ...Option) (s *Subscriber, err error) {
 	o := &Options{
 		subFactory:      DefaultSubscriptionFactory(),
-		grpNamerFactory: DefaultGroupNamerFactory(),
+		grpNamerFactory: DefaultGroupNamerFactory(""),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -61,7 +61,11 @@ func (s *Subscriber) Subscribe(
 		return nil, err
 	}
 
-	scb, err := s.subFactory(subj, s.grpNamerFactory(s.stream, subj))
+	groupNamer, err := s.grpNamerFactory(s.stream, subj)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create group namer: %w", err)
+	}
+	scb, err := s.subFactory(subj, groupNamer)
 	if err != nil {
 		return nil, err
 	}
@@ -95,9 +99,19 @@ func (s *Subscriber) createConsumer(subj string) error {
 		return nil
 	}
 
-	cfg := s.consFactory(subj, s.grpNamerFactory(s.stream, subj))
+	groupNamer, err := s.grpNamerFactory(s.stream, subj)
+	if err != nil {
+		return fmt.Errorf("failed to create group namer: %w", err)
+	}
+	cfg, err := s.consFactory(subj, groupNamer)
+	if err != nil {
+		return fmt.Errorf("failed to create consumer config: %w", err)
+	}
+	if cfg.FilterSubject == "" {
+		cfg.FilterSubject = subj
+	}
 
-	_, err := s.conn.JetStreamContext().AddConsumer(s.stream, cfg)
+	_, err = s.conn.JetStreamContext().AddConsumer(s.stream, cfg)
 	if err != nil {
 		if errors.Is(err, nats.ErrStreamNameAlreadyInUse) {
 			return nil
@@ -109,7 +123,7 @@ func (s *Subscriber) createConsumer(subj string) error {
 	// we have to Update the consumer.
 	_, err = s.conn.JetStreamContext().UpdateConsumer(s.stream, cfg)
 	if err != nil {
-		return fmt.Errorf("cannot update consumer; err: %w", err)
+		return fmt.Errorf("cannot update consumer: %w", err)
 	}
 
 	return nil

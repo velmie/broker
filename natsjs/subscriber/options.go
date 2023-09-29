@@ -2,7 +2,7 @@ package subscriber
 
 import (
 	"fmt"
-	"regexp"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -25,10 +25,10 @@ type GroupNamer interface {
 type SubscriptionFactoryFunc func(subject string, namer GroupNamer) (Subscriptor, error)
 
 // ConsumerFactoryFunc defines behavior for consumers construction
-type ConsumerFactoryFunc func(subject string, namer GroupNamer) *nats.ConsumerConfig
+type ConsumerFactoryFunc func(subject string, namer GroupNamer) (*nats.ConsumerConfig, error)
 
 // GroupNamerFactoryFunc defines behavior for consumer group namer construction
-type GroupNamerFactoryFunc func(stream, subject string) GroupNamer
+type GroupNamerFactoryFunc func(stream, subject string) (GroupNamer, error)
 
 // Options represents Subscriber options
 type Options struct {
@@ -100,7 +100,7 @@ func DefaultSubscriptionFactory() SubscriptionFactoryFunc {
 // DefaultConsumerFactory can be used for consumer creation. It creates consumer with name, durable, dlv. group and dlb. subject
 // retrieved from GroupNamer method Name, DeliverLastPolicy and AckExplicitPolicy
 func DefaultConsumerFactory() ConsumerFactoryFunc {
-	return func(subject string, namer GroupNamer) *nats.ConsumerConfig {
+	return func(subject string, namer GroupNamer) (*nats.ConsumerConfig, error) {
 		return &nats.ConsumerConfig{
 			Name:           namer.Name(),
 			Durable:        namer.Name(),
@@ -112,25 +112,21 @@ func DefaultConsumerFactory() ConsumerFactoryFunc {
 			// We choose 20160 because we use 30sec NackDelay() and it is equal to MaxAge of messages:
 			// 20160 = 7days(604800s) / 30s
 			MaxDeliver: 20160,
-		}
+		}, nil
 	}
 }
+
+var replacer = strings.NewReplacer("*", "-any-", ".", "_", ">", "-rest")
 
 // DefaultGroupNamerFactory allows to define construction of GroupNamer
-func DefaultGroupNamerFactory() GroupNamerFactoryFunc {
-	return func(stream, subject string) GroupNamer {
-		return &DefaultConsumerGroupNamer{Stream: stream, Subject: subject}
+func DefaultGroupNamerFactory(prefix string) GroupNamerFactoryFunc {
+	return func(stream, subject string) (GroupNamer, error) {
+		return DirectGroupNamer(prefix + fmt.Sprintf("%s-%s", stream, replacer.Replace(subject))), nil
 	}
 }
 
-// DefaultConsumerGroupNamer is default consumer group namer used if nothing is set.
-type DefaultConsumerGroupNamer struct {
-	Stream  string
-	Subject string
-}
+type DirectGroupNamer string
 
-func (n *DefaultConsumerGroupNamer) Name() string {
-	name := fmt.Sprintf("%s-%s", n.Stream, n.Subject)
-	exp := regexp.MustCompile("[*>. ]")
-	return string(exp.ReplaceAll([]byte(name), []byte("-")))
+func (n DirectGroupNamer) Name() string {
+	return string(n)
 }

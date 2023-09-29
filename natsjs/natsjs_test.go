@@ -742,13 +742,13 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 	defer pub.Close()
 
 	// create the same consumer for both subscriptions
-	consFactory := func(subj string, namer subscriber.GroupNamer) *nats.ConsumerConfig {
+	consFactory := func(subj string, namer subscriber.GroupNamer) (*nats.ConsumerConfig, error) {
 		return &nats.ConsumerConfig{
 			Name:          consumer,
 			Durable:       consumer,
 			DeliverPolicy: nats.DeliverLastPolicy,
 			AckPolicy:     nats.AckExplicitPolicy,
-		}
+		}, nil
 	}
 
 	subFactory := func(subj string, namer subscriber.GroupNamer) (subscriber.Subscriptor, error) {
@@ -817,7 +817,7 @@ func TestSubscriber_NackDelay(t *testing.T) {
 	defer pub.Close()
 
 	// create the same consumer for both subscriptions
-	consFactory := func(subj string, namer subscriber.GroupNamer) *nats.ConsumerConfig {
+	consFactory := func(subj string, namer subscriber.GroupNamer) (*nats.ConsumerConfig, error) {
 		return &nats.ConsumerConfig{
 			Name:           namer.Name(),
 			Durable:        namer.Name(),
@@ -826,7 +826,7 @@ func TestSubscriber_NackDelay(t *testing.T) {
 			DeliverPolicy:  nats.DeliverLastPolicy,
 			AckPolicy:      nats.AckExplicitPolicy,
 			MaxDeliver:     maxRedeliver,
-		}
+		}, nil
 	}
 
 	subFactory := func(subj string, namer subscriber.GroupNamer) (subscriber.Subscriptor, error) {
