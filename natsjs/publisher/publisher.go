@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/nats-io/nats.go"
+
 	"github.com/velmie/broker"
 
 	"github.com/velmie/broker/natsjs/v2/conn"

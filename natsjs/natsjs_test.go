@@ -14,6 +14,7 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/pkg/errors"
+
 	"github.com/velmie/broker"
 
 	"github.com/velmie/broker/natsjs/v2/conn"

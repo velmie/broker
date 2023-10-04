@@ -1,5 +1,7 @@
 package broker
 
+//go:generate go run go.uber.org/mock/mockgen@v0.3.0 -source common.go -destination ./mock/common.go
+
 // Handler is used to process messages via a subscription of a topic.
 // The handler is passed a publication interface which contains the
 // message and optional Ack method to acknowledge receipt of the message.

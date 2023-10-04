@@ -1,5 +1,7 @@
 package broker
 
+//go:generate go run go.uber.org/mock/mockgen@v0.3.0 -source subscriber.go -destination ./mock/subscriber.go
+
 // Subscription represents a DefaultSubscription to a specific topic
 type Subscription interface {
 	Topic() string

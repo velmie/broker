@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
 	"github.com/velmie/broker"
 )
 
