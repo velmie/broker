@@ -28,9 +28,10 @@ type ErrorHandler func(err error, sub Subscription)
 
 // Logger abstracts the logging functionality
 type Logger interface {
-	Debug(v ...interface{})
-	Error(v ...interface{})
-	Info(v ...interface{})
+	Debug(msg string, args ...any)
+	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
+	Error(msg string, args ...any)
 }
 
 func SetIDHeader(message *Message) {

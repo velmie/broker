@@ -45,7 +45,7 @@ func TestSubscriptionCoordinator(t *testing.T) {
 		require.NoError(t, err)
 
 		logger.EXPECT().Info(gomock.Eq("subscribing to test_topic")).Times(1)
-		logger.EXPECT().Error(gomock.Eq("failed to subscribe to 'test_topic': subscription error")).Times(1)
+		logger.EXPECT().Error(gomock.Eq("failed to Subscribe to 'test_topic': subscription error")).Times(1)
 		err = sc.SubscribeAll(ctx)
 		require.Error(t, err)
 	})
@@ -79,10 +79,10 @@ func TestSubscriptionCoordinator(t *testing.T) {
 		require.NoError(t, err)
 		err = sc.AddSubscription("test_topic", sf)
 		require.Error(t, err)
-		require.Equal(t, "subscription with name \"test_topic\" is already added", err.Error())
+		require.Equal(t, "subscription with Name \"test_topic\" is already added", err.Error())
 	})
 
-	t.Run("SubscribeAllContextCancelled", func(t *testing.T) {
+	t.Run("TestSubscribeAllContextCancelled", func(t *testing.T) {
 		cctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -95,5 +95,16 @@ func TestSubscriptionCoordinator(t *testing.T) {
 
 		err = sc.SubscribeAll(cctx)
 		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("TestCreateSubscribeFunc", func(t *testing.T) {
+		sub := mock_broker.NewMockSubscriber(ctrl)
+		sf := CreateSubscribeFunc("test_topic", sub, nil)
+
+		sub.EXPECT().Subscribe("test_topic", nil).Return(subscription, nil).Times(1)
+
+		s, err := sf(ctx)
+		require.NoError(t, err)
+		require.Same(t, s, subscription)
 	})
 }

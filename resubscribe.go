@@ -52,7 +52,7 @@ func ResubscribeErrorHandler(
 				_, err = subscriber.Subscribe(sub.Topic(), sub.Handler(), sub.InitOptions()...)
 				if err != nil && log != nil {
 					msg := fmt.Sprintf(
-						"broker.ResubscribeErrorHandler failed: unable to subscribe to the topic %q: %s",
+						"broker.ResubscribeErrorHandler failed: unable to Subscribe to the topic %q: %s",
 						sub.Topic(),
 						err,
 					)
