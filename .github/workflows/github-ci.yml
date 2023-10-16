@@ -3,11 +3,10 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - master
-      - feat/VLM-2034
+      - main
   pull_request:
     branches:
-      - master
+      - main
 jobs:
   linter:
     runs-on: ubuntu-latest
