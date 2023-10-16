@@ -1,6 +1,7 @@
 package conn
 
 import (
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -14,7 +15,7 @@ type Connection struct {
 
 // Establish tries to establish connection to NATS server and construct JetStreamContext. Can be configured via various of Option(s)
 func Establish(opts ...Option) (*Connection, error) {
-	o := &Options{url: nats.DefaultURL}
+	o := &Options{urls: []string{nats.DefaultURL}}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(o)
@@ -22,7 +23,7 @@ func Establish(opts ...Option) (*Connection, error) {
 	}
 
 	// connect to NATS with options specified
-	nc, err := nats.Connect(o.url, o.natsOpts...)
+	nc, err := nats.Connect(strings.Join(o.urls, ","), o.natsOpts...)
 	if err != nil {
 		return nil, err
 	}
