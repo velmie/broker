@@ -11,9 +11,16 @@ type Message struct {
 	// ID must uniquely identify the message
 	ID string
 	// Header includes additional service data
-	Header map[string]string
+	Header Header
 	// Body is message payload
 	Body []byte
+}
+
+// NewMessage initializes message
+func NewMessage() *Message {
+	return &Message{
+		Header: make(Header),
+	}
 }
 
 // Event is given to a subscription handler for processing
