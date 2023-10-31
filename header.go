@@ -6,6 +6,7 @@ import "strconv"
 const (
 	// HdrReplyTopic is the constant used to represent the header key for the reply topic.
 	HdrReplyTopic = "reply-topic"
+	HdrReplyMsgID = "reply-message-id"
 	HdrCreatedAt  = "created-at"
 )
 
@@ -32,6 +33,17 @@ func (h Header) SetReplyTopic(topic string) {
 // Returns an empty string if the reply topic is not set.
 func (h Header) GetReplyTopic() string {
 	return h.Get(HdrReplyTopic)
+}
+
+// SetReplyMessageID sets the reply message id in the header using a predefined key.
+func (h Header) SetReplyMessageID(id string) {
+	h.Set(HdrReplyMsgID, id)
+}
+
+// GetReplyMessageID retrieves the reply message id value from the header.
+// Returns an empty string if the reply message id is not set.
+func (h Header) GetReplyMessageID() string {
+	return h.Get(HdrReplyMsgID)
 }
 
 // SetCreatedAt sets the creation timestamp (unix time) in the header using a predefined key.

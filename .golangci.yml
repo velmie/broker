@@ -24,7 +24,7 @@ linters-settings:
     settings:
       mnd:
         # don't include the "operation" and "assign"
-        checks: [argument,case,condition,return]
+        checks: [ argument,case,condition,return ]
   govet:
     check-shadowing: true
   lll:
@@ -77,8 +77,10 @@ linters:
     - whitespace
 
 issues:
-  # Excluding configuration per-path, per-linter, per-text and per-source
-  exclude-rules: []
+  exclude-rules:
+    - linters:
+        - funlen
+      path: _test\.go$
 run:
   timeout: 5m
   skip-dirs:

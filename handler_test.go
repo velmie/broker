@@ -12,7 +12,7 @@ import (
 	mock_broker "github.com/velmie/broker/mock"
 )
 
-func TestCreateDecodingHandler(t *testing.T) {
+func TestCreateHandler(t *testing.T) {
 	type testGreetingMessage struct {
 		Greeting string `json:"greeting"`
 		Name     string `json:"name"`
@@ -27,7 +27,7 @@ func TestCreateDecodingHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	jsonDecoder := broker.DecoderFunc(json.Unmarshal)
-	handler := broker.CreateDecodingHandler(jsonDecoder, consumer)
+	handler := broker.CreateHandler(jsonDecoder, consumer)
 
 	message := &broker.Message{
 		ID:   "123",
