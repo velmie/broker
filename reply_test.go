@@ -14,7 +14,12 @@ import (
 )
 
 type requestMessage struct {
-	Name string `json:"name"`
+	Name          string `json:"name"`
+	correlationID string
+}
+
+func (r *requestMessage) SetCorrelationID(s string) {
+	r.correlationID = s
 }
 
 type responseMessage struct {
@@ -37,7 +42,8 @@ func TestReplyHandler(t *testing.T) {
 			inputMessage: &broker.Message{
 				ID: "test-message-id",
 				Header: broker.Header{
-					broker.HdrReplyTo: "test-topic",
+					broker.HdrReplyTo:       "test-topic",
+					broker.HdrCorrelationID: "correlation-id",
 				},
 				Body: []byte(`{"name":"Gopher"}`),
 			},
@@ -46,6 +52,7 @@ func TestReplyHandler(t *testing.T) {
 				return nil
 			},
 			consumer: func(_ context.Context, msg *requestMessage) (*responseMessage, error) {
+				require.Equal(t, "correlation-id", msg.correlationID, "correlation id must be set")
 				return &responseMessage{Greeting: "Hello " + msg.Name}, nil
 			},
 			wantErr: false,
@@ -55,12 +62,14 @@ func TestReplyHandler(t *testing.T) {
 			inputMessage: &broker.Message{
 				ID: "test-message-id",
 				Header: broker.Header{
-					broker.HdrReplyTo: "test-topic",
+					broker.HdrReplyTo:       "test-topic",
+					broker.HdrCorrelationID: "correlation-id",
 				},
 				Body: []byte(`{"name":"Gopher"}`),
 			},
 			publishFunc: nil,
 			consumer: func(_ context.Context, msg *requestMessage) (*responseMessage, error) {
+				require.Equal(t, "correlation-id", msg.correlationID, "correlation id must be set")
 				return nil, errors.New("error in consumer")
 			},
 			wantErr: true,

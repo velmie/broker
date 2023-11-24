@@ -34,6 +34,10 @@ func CreateHandler[T any](
 	return createHandler(dec, runConsumerFunc, middleware...)
 }
 
+type CorrelationIDAware interface {
+	SetCorrelationID(id string)
+}
+
 func createHandler[T any](
 	dec Decoder,
 	consumerFunc func(ctx context.Context, event Event, target T) error,
@@ -46,6 +50,11 @@ func createHandler[T any](
 		if err := dec.Decode(message.Body, target); err != nil {
 			err = fmt.Errorf("failed to decode message body: %s", err)
 			return err
+		}
+		if correlationID := message.Header.GetCorrelationID(); correlationID != "" {
+			if corIDAware, ok := any(*target).(CorrelationIDAware); ok {
+				corIDAware.SetCorrelationID(correlationID)
+			}
 		}
 		if err := consumerFunc(message.Context(), event, *target); err != nil {
 			return err
