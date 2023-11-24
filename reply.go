@@ -33,8 +33,11 @@ func CreateReplyHandler[REQ any, RESP any](
 			return err
 		}
 		reqMsg := event.Message()
-		if replyTopic := reqMsg.Header.GetReplyTopic(); replyTopic != "" {
-			msg := NewMessage()
+		if replyTopic := reqMsg.Header.GetReplyTo(); replyTopic != "" {
+			msg := NewMessageWithContext(ctx)
+			if correlationID := reqMsg.Header.GetCorrelationID(); correlationID != "" {
+				msg.Header.SetCorrelationID(correlationID)
+			}
 			body, eErr := enc.Encode(resp)
 			if eErr != nil {
 				return fmt.Errorf("cannot encode message body: %w", eErr)

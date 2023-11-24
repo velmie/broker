@@ -37,7 +37,7 @@ func TestReplyHandler(t *testing.T) {
 			inputMessage: &broker.Message{
 				ID: "test-message-id",
 				Header: broker.Header{
-					broker.HdrReplyTopic: "test-topic",
+					broker.HdrReplyTo: "test-topic",
 				},
 				Body: []byte(`{"name":"Gopher"}`),
 			},
@@ -55,7 +55,7 @@ func TestReplyHandler(t *testing.T) {
 			inputMessage: &broker.Message{
 				ID: "test-message-id",
 				Header: broker.Header{
-					broker.HdrReplyTopic: "test-topic",
+					broker.HdrReplyTo: "test-topic",
 				},
 				Body: []byte(`{"name":"Gopher"}`),
 			},

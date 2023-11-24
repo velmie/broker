@@ -30,16 +30,16 @@ func TestHeaderSetReplyTopic(t *testing.T) {
 	h := Header{}
 
 	topic := "test-topic"
-	h.SetReplyTopic(topic)
-	if got := h.GetReplyTopic(); got != topic {
-		t.Errorf("GetReplyTopic() = %v; want %v", got, topic)
+	h.SetReplyTo(topic)
+	if got := h.GetReplyTo(); got != topic {
+		t.Errorf("GetReplyTo() = %v; want %v", got, topic)
 	}
 }
 
 func TestHeaderGetReplyTopicWithoutSetting(t *testing.T) {
 	h := Header{}
-	if got := h.GetReplyTopic(); got != "" {
-		t.Errorf("expected empty string for GetReplyTopic() without setting, got %v", got)
+	if got := h.GetReplyTo(); got != "" {
+		t.Errorf("expected empty string for GetReplyTo() without setting, got %v", got)
 	}
 }
 

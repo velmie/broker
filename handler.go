@@ -42,11 +42,12 @@ func createHandler[T any](
 	h := func(event Event) error {
 		var target = new(T)
 
-		if err := dec.Decode(event.Message().Body, target); err != nil {
+		message := event.Message()
+		if err := dec.Decode(message.Body, target); err != nil {
 			err = fmt.Errorf("failed to decode message body: %s", err)
 			return err
 		}
-		if err := consumerFunc(context.Background(), event, *target); err != nil {
+		if err := consumerFunc(message.Context(), event, *target); err != nil {
 			return err
 		}
 		return nil

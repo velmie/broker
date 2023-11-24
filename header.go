@@ -4,10 +4,12 @@ package broker
 import "strconv"
 
 const (
-	// HdrReplyTopic is the constant used to represent the header key for the reply topic.
-	HdrReplyTopic = "reply-topic"
-	HdrReplyMsgID = "reply-message-id"
-	HdrCreatedAt  = "created-at"
+	// HdrReplyTo is the constant used to represent the header key for the reply topic.
+	HdrReplyTo    = "Reply-To"
+	HdrReplyMsgID = "Reply-Message-Id"
+	HdrCreatedAt  = "Created-At"
+	// HdrCorrelationID is the unique identifier used to track and correlate messages as they flow through a system
+	HdrCorrelationID = "Correlation-Id"
 )
 
 // Header represents a set of key-value pairs
@@ -16,6 +18,9 @@ type Header map[string]string
 // Get retrieves the value associated with the provided key from the header.
 // Returns an empty string if the key does not exist.
 func (h Header) Get(key string) string {
+	if h == nil {
+		return ""
+	}
 	return h[key]
 }
 
@@ -24,15 +29,15 @@ func (h Header) Set(key, value string) {
 	h[key] = value
 }
 
-// SetReplyTopic sets the reply topic in the header using a predefined key.
-func (h Header) SetReplyTopic(topic string) {
-	h.Set(HdrReplyTopic, topic)
+// SetReplyTo sets the reply topic in the header using a predefined key.
+func (h Header) SetReplyTo(topic string) {
+	h.Set(HdrReplyTo, topic)
 }
 
-// GetReplyTopic retrieves the reply topic value from the header.
+// GetReplyTo retrieves the reply topic value from the header.
 // Returns an empty string if the reply topic is not set.
-func (h Header) GetReplyTopic() string {
-	return h.Get(HdrReplyTopic)
+func (h Header) GetReplyTo() string {
+	return h.Get(HdrReplyTo)
 }
 
 // SetReplyMessageID sets the reply message id in the header using a predefined key.
@@ -49,6 +54,17 @@ func (h Header) GetReplyMessageID() string {
 // SetCreatedAt sets the creation timestamp (unix time) in the header using a predefined key.
 func (h Header) SetCreatedAt(timestamp int64) {
 	h.Set(HdrCreatedAt, strconv.FormatInt(timestamp, 10))
+}
+
+// SetCorrelationID sets the correlation id in the header using a predefined key.
+func (h Header) SetCorrelationID(id string) {
+	h.Set(HdrCorrelationID, id)
+}
+
+// GetCorrelationID retrieves the correlation id value from the header.
+// Returns an empty string if the correlation id is not set.
+func (h Header) GetCorrelationID() string {
+	return h.Get(HdrCorrelationID)
 }
 
 // GetCreatedAt retrieves the creation timestamp from the header.

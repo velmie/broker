@@ -1,5 +1,9 @@
 package broker
 
+import (
+	"context"
+)
+
 //go:generate go run go.uber.org/mock/mockgen@v0.3.0 -source common.go -destination ./mock/common.go
 
 // Handler is used to process messages via a subscription of a topic.
@@ -36,13 +40,36 @@ type Message struct {
 	Header Header
 	// Body is message payload
 	Body []byte
+
+	ctx context.Context
 }
 
 // NewMessage initializes message
 func NewMessage() *Message {
+	return NewMessageWithContext(context.Background())
+}
+
+// NewMessageWithContext initializes message with context
+func NewMessageWithContext(ctx context.Context) *Message {
 	return &Message{
 		Header: make(Header),
+		ctx:    ctx,
 	}
+}
+
+func (m *Message) Context() context.Context {
+	if m.ctx == nil {
+		m.ctx = context.Background()
+	}
+	return m.ctx
+}
+
+func (m *Message) SetContext(ctx context.Context) *Message {
+	if ctx == nil {
+		panic("nil context")
+	}
+	m.ctx = ctx
+	return m
 }
 
 // Event is given to a subscription handler for processing
