@@ -121,12 +121,5 @@ func (s *Subscriber) createConsumer(subj string) error {
 		return nil
 	}
 
-	// If consumer was already created by some previous calls, and we want to change its configuration,
-	// we have to Update the consumer.
-	_, err = s.conn.JetStreamContext().UpdateConsumer(s.stream, cfg)
-	if err != nil {
-		return fmt.Errorf("cannot update consumer: %w", err)
-	}
-
 	return nil
 }

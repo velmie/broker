@@ -723,10 +723,11 @@ func TestSubscriber_LostConnection(t *testing.T) {
 
 func TestSubscriber_InitConsumer(t *testing.T) {
 	const (
-		stream   = "INIT-CONSUMER"
-		consumer = "initcons"
-		subject1 = "initcons.created"
-		subject2 = "initcons.updated"
+		stream    = "INIT-CONSUMER"
+		consumer1 = "initcons1"
+		consumer2 = "initcons2"
+		subject1  = "initcons.created"
+		subject2  = "initcons.updated"
 	)
 
 	// just for stream init
@@ -745,8 +746,8 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 	// create the same consumer for both subscriptions
 	consFactory := func(subj string, namer subscriber.GroupNamer) (*nats.ConsumerConfig, error) {
 		return &nats.ConsumerConfig{
-			Name:          consumer,
-			Durable:       consumer,
+			Name:          namer.Name(),
+			Durable:       namer.Name(),
 			DeliverPolicy: nats.DeliverLastPolicy,
 			AckPolicy:     nats.AckExplicitPolicy,
 		}, nil
@@ -755,7 +756,7 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 	subFactory := func(subj string, namer subscriber.GroupNamer) (subscriber.Subscriptor, error) {
 		return subscriber.PullSubscription().
 			Subject(subj).
-			Durable(consumer).
+			Durable(namer.Name()).
 			SubOptions(
 				nats.DeliverLast(),
 				nats.AckExplicit(),
@@ -767,6 +768,12 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 		stream,
 		subscriber.ConsumerFactory(consFactory),
 		subscriber.SubscriptionFactory(subFactory),
+		subscriber.ConsumerGroupNamerFactory(func(stream, subject string) (subscriber.GroupNamer, error) {
+			if subject == subject1 {
+				return subscriber.DirectGroupNamer(consumer1), nil
+			}
+			return subscriber.DirectGroupNamer(consumer2), nil
+		}),
 	)
 	if err != nil {
 		t.Fatalf("failed to connect subscriber to NATS server: %v", err)
@@ -789,9 +796,14 @@ func TestSubscriber_InitConsumer(t *testing.T) {
 	}
 	defer ns2.Unsubscribe()
 
-	_, err = srv.consumerInfo(stream, consumer)
+	_, err = srv.consumerInfo(stream, consumer1)
 	if err != nil {
-		t.Fatalf("failed to get consumer info: %v", err)
+		t.Fatalf("failed to get consumer1 info: %v", err)
+	}
+
+	_, err = srv.consumerInfo(stream, consumer2)
+	if err != nil {
+		t.Fatalf("failed to get consumer2 info: %v", err)
 	}
 }
 
