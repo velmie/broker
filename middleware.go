@@ -142,3 +142,44 @@ func WithLogBodyFunc(logBodyFunc func(e Event) string) LoggingMiddlewareOption {
 		o.logBodyFunc = logBodyFunc
 	}
 }
+
+// LoopbackPreventionMiddleware returns a Middleware function that prevents the handling of messages
+// originating from the specified instance. This middleware is useful in scenarios where an application
+// should not process its own outputs to avoid loops in message processing, particularly in distributed
+// systems where instances can receive messages they have sent.
+//
+// Parameters:
+//
+//		instanceID - The unique identifier of the instance to ignore messages from.
+//	 logger - An optional Logger for logging debug information.
+//
+// Returns:
+//
+//	A Middleware function that takes a Handler and returns a new Handler, which intercepts each event,
+//	checks if it originates from the specified instance, and skips processing if so, passing others to
+//	the next handler in the chain.
+func LoopbackPreventionMiddleware(instanceID string, logger ...Logger) Middleware {
+	var l Logger
+	if len(logger) > 0 {
+		l = logger[0]
+	}
+	return func(next Handler) Handler {
+		return func(e Event) error {
+			if e.Message().Header.GetInstanceID() == instanceID {
+				if l != nil {
+					l.Debug(
+						"skipping message handling as it originates from the same instance",
+						"instanceId",
+						instanceID,
+						"topic",
+						e.Topic(),
+						"messageId",
+						e.Message().ID,
+					)
+				}
+				return nil
+			}
+			return next(e)
+		}
+	}
+}

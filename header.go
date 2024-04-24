@@ -10,6 +10,10 @@ const (
 	HdrCreatedAt  = "Created-At"
 	// HdrCorrelationID is the unique identifier used to track and correlate messages as they flow through a system
 	HdrCorrelationID = "Correlation-Id"
+	// HdrInstanceID is the constant used to represent the header key for the instance identifier.
+	// This identifier is used to uniquely identify a specific instance of a service or application
+	// that generates or handles the message, often useful in distributed systems for tracing and diagnostics.
+	HdrInstanceID = "Instance-Id"
 )
 
 // Header represents a set of key-value pairs
@@ -76,4 +80,16 @@ func (h Header) GetCreatedAt() int64 {
 	}
 	timestamp, _ := strconv.ParseInt(v, 10, 64)
 	return timestamp
+}
+
+// SetInstanceID sets the instance identifier in the header using a predefined key.
+// This identifier is used to mark the specific instance of a service or application that processed the message.
+func (h Header) SetInstanceID(id string) {
+	h.Set(HdrInstanceID, id)
+}
+
+// GetInstanceID retrieves the instance identifier value from the header.
+// Returns an empty string if the instance identifier is not set.
+func (h Header) GetInstanceID() string {
+	return h.Get(HdrInstanceID)
 }

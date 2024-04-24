@@ -22,3 +22,28 @@ type PublisherFunc func(topic string, message *Message) error
 func (f PublisherFunc) Publish(topic string, message *Message) error {
 	return f(topic, message)
 }
+
+// PublishWithInstanceID returns a PublisherMiddleware that ensures every published message
+// includes the specified instance ID in its headers. This middleware can be used to trace
+// which instance of a service or application published the message, aiding in diagnostics
+// and system monitoring in distributed environments.
+//
+// Parameters:
+//
+//	id - The unique identifier of the instance to be set in the message's header.
+//
+// Returns:
+//
+//	A PublisherMiddleware function that takes a Publisher and returns a new Publisher
+//	which sets the instance ID in the message header before publishing.
+func PublishWithInstanceID(id string) PublisherMiddleware {
+	return func(next Publisher) Publisher {
+		return PublisherFunc(func(topic string, message *Message) error {
+			if message.Header == nil {
+				message.Header = make(Header)
+			}
+			message.Header.SetInstanceID(id)
+			return next.Publish(topic, message)
+		})
+	}
+}
