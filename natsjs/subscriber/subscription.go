@@ -39,9 +39,8 @@ func (s *subscription) msgHandler(m *nats.Msg) {
 	// build internal event for processing by handler func
 	bm := s.brokerMsg(m)
 	evt := &event{
-		subj: s.subj,
-		bm:   bm,
-		nm:   m,
+		bm: bm,
+		nm: m,
 	}
 
 	handler := s.Handler()

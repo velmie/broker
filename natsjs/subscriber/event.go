@@ -10,14 +10,13 @@ import (
 
 // event is an implementation of broker.Event
 type event struct {
-	subj string
-	bm   *broker.Message
-	nm   *nats.Msg
+	bm *broker.Message
+	nm *nats.Msg
 }
 
 // Topic returns event subject
 func (e *event) Topic() string {
-	return e.subj
+	return e.nm.Subject
 }
 
 // Message returns broker.Message
