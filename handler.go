@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"fmt"
+	"reflect"
 )
 
 //go:generate go run go.uber.org/mock/mockgen@v0.3.0 -source decoder.go -destination ./mock/decoder.go
@@ -44,19 +45,42 @@ func createHandler[T any](
 	middleware ...Middleware,
 ) Handler {
 	h := func(event Event) error {
-		var target = new(T)
+		var target T
+		var targetPtr any
+
+		targetType := reflect.TypeOf(target)
+		if targetType == nil {
+			return fmt.Errorf("cannot determine type of target")
+		}
+
+		if targetType.Kind() == reflect.Pointer {
+			// T is a pointer type
+			// Allocate a new instance of the type pointed to by T
+			elemType := targetType.Elem()
+			targetValue := reflect.New(elemType)
+			target = targetValue.Interface().(T)
+			targetPtr = target
+		} else {
+			// T is not a pointer type; use the address of target
+			targetPtr = &target
+		}
 
 		message := event.Message()
-		if err := dec.Decode(message.Body, target); err != nil {
+		if err := dec.Decode(message.Body, targetPtr); err != nil {
 			err = fmt.Errorf("failed to decode message body: %s", err)
 			return err
 		}
+
 		if correlationID := message.Header.GetCorrelationID(); correlationID != "" {
-			if corIDAware, ok := any(*target).(CorrelationIDAware); ok {
+			if corIDAware, ok := any(target).(CorrelationIDAware); ok {
+				corIDAware.SetCorrelationID(correlationID)
+			}
+			if corIDAware, ok := targetPtr.(CorrelationIDAware); ok {
 				corIDAware.SetCorrelationID(correlationID)
 			}
 		}
-		if err := consumerFunc(message.Context(), event, *target); err != nil {
+
+		if err := consumerFunc(message.Context(), event, target); err != nil {
 			return err
 		}
 		return nil
