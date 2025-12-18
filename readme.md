@@ -1,127 +1,90 @@
 # Broker
 
-The "broker" package provides functionality for working with publish/subscribe messaging systems.
+"broker" is a small Go library that standardizes publish/subscribe message handling across different transports.
+You write business logic once, then plug in a backend like NATS JetStream, AWS SQS/SNS, or Azure Service Bus.
 
-The main tasks that this package solves is to simplify the creation of business logic and unify the code for different
-implementations.
+Each module declares its supported Go version in its `go.mod`.
 
-## Usage example
+The core package focuses on:
 
-**Below are examples that demonstrate the general use of the package, without initialization and other details.
-See the `examples` directory for specific examples.**
+- Minimal interfaces (`Publisher`, `Subscriber`, `Event`) that keep your handlers transport-agnostic
+- Helpers for typed handlers (`CreateHandler`, `CreateReplyHandler`)
+- A middleware model (`Middleware`) for cross-cutting concerns (logging, tracing, idempotency, panic recovery)
 
-### Message publishing
+## Documentation
+
+- [Docs index](docs/README.md)
+- [Getting started](docs/getting-started.md)
+- [Middleware](docs/middleware.md)
+- [Coordinator](docs/coordinator.md)
+- [Request reply](docs/request-reply.md)
+
+## Installation
+
+Core:
+
+```bash
+go get github.com/velmie/broker
+```
+
+Backends and add-ons are separate modules:
+
+- NATS JetStream: `go get github.com/velmie/broker/natsjs/v2` (see [natsjs/README.md](natsjs/README.md))
+- AWS SQS: `go get github.com/velmie/broker/sqs`
+- AWS SNS: `go get github.com/velmie/broker/sns`
+- Azure Service Bus: `go get github.com/velmie/broker/azuresb`
+- OpenTelemetry middleware: `go get github.com/velmie/broker/otelbroker`
+- Idempotency middleware: `go get github.com/velmie/broker/idempotency` (see [idempotency/README.md](idempotency/README.md))
+
+## Quick Start
+
+### Publish
 
 ```go
-func Publish(publisher broker.Publisher) {
-	message := &broker.Message{
-		ID: "my-unique-id",
-		Header: map[string]string{
-			"additional": "data",
-		},
-		Body: []byte(`{"my":"event payload"}`),
-	}
+msg := broker.NewMessageWithContext(ctx)
+msg.ID = "order-123" // stable ID matters for dedupe/idempotency in many backends
+msg.Body = []byte(`{"orderId":"123"}`)
+msg.Header.SetCorrelationID("corr-1")
 
-	err := publisher.Publish("topic-name", message)
-	if err != nil {
-		fmt.Println("cannot publish message: ", err)
-		return
-	}
-	fmt.Println("message has been published")
-	return
+if err := pub.Publish("orders.created", msg); err != nil {
+	// handle error
 }
 ```
 
-### Message subscribing
+### Subscribe (typed handler + middleware)
 
 ```go
-func Subscribe(subscriber broker.Subscriber) {
-	subscription, err := subscriber.Subscribe(
-		"topic-name",
-		eventHandler,
-		broker.WithDefaultErrorHandler(subscriber, &stubLogger{}),
-	)
-	if err != nil {
-		fmt.Println("cannot subscribe on topic: ", err)
-		return
-	}
-
-	go func() {
-		time.Sleep(15 * time.Second)
-		fmt.Println("Unsubscribing ", subscription.Unsubscribe())
-	}()
-	
-	<-subscription.Done()
+type OrderCreated struct {
+	OrderID string `json:"orderId"`
 }
 
-func eventHandler(event broker.Event) error {
-	fmt.Printf("[%s] received new message\n", event.Topic())
-	msg := event.Message()
-	fmt.Println("Headers: ")
-	for k, v := range msg.Header {
-		fmt.Printf("\t%s = %s\n", k, v)
-	}
-	fmt.Printf("BODY:\n%s\n", string(msg.Body))
+handler := broker.CreateHandler(
+	broker.DecoderFunc(json.Unmarshal),
+	func(ctx context.Context, m OrderCreated) error {
+		// business logic
+		return nil
+	},
+	broker.PanicRecoveryMiddleware(),
+)
 
-	return nil
-}
-
-type stubLogger struct {
-}
-
-func (s *stubLogger) Debug(v ...interface{}) {
-	fmt.Println("DEBUG:")
-	fmt.Println(v...)
-}
-
-func (s *stubLogger) Error(v ...interface{}) {
-	fmt.Println("ERROR:")
-	fmt.Println(v...)
-}
-
-func (s *stubLogger) Info(v ...interface{}) {
-	fmt.Println("INFO:")
-	fmt.Println(v...)
+_, err := sub.Subscribe("orders.created", handler)
+if err != nil {
+	// handle error
 }
 ```
 
-## Error handling
+## Acknowledgment and retries
 
-The package provides a convenient way to handle errors and contains several "out of the box" implementations 
-that will be sufficient for most possible use cases.
+- By default, subscriptions use AutoAck. If the handler returns `nil`, the message is acknowledged.
+- Disable it with `broker.DisableAutoAck()` and call `event.Ack()` yourself.
+- For retries/resubscribe flows, attach an error handler, for example `broker.WithDefaultErrorHandler(sub, logger)`.
 
-```go
-// ErrorHandler is used in order to handle errors
-type ErrorHandler func(err error, sub Subscription)
-```
+## Examples
 
-Consider using the `broker.WithDefaultErrorHandler`. This default handler does the following:
+Runnable examples live in `_examples/`.
 
-* logs error message
-* waits 5 seconds
-* resubscribes on a topic
-  * tries to subscribe every 10 seconds in case if subscription attempt failed
+## Package layout
 
-You may want to add additional error handlers. It is possible by combining them using `broker.CombineErrorHandlers`.
-
-## Message acknowledgment
-
-By default, received messages are acknowledged automatically if the Handler run without 
-errors and returned nil.
-If this behavior is undesirable, 
-then it is possible to disable auto-acknowledge using the `broker.DisableAutoAck` option
-
-If this option is applied, then the handler must explicitly "Ack" the message.
-
-```go
-func eventHandler(event broker.Event) error {
-    //... some event handling business logic
-	
-	err := event.Ack() // explicit message acknowledgment
-
-	return err
-}
-```
-
-
-
+- Core interfaces and helpers: repo root (`package broker`)
+- Transport backends: `natsjs/`, `sqs/`, `sns/`, `azuresb/`
+- Add-ons: `otelbroker/` (tracing middleware), `idempotency/` (idempotent consumer middleware)
