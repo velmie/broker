@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/velmie/broker"
@@ -13,6 +13,7 @@ import (
 )
 
 const defaultOperation = "consume"
+const keySeparator = ":"
 
 // Middleware returns a broker.Middleware that enforces idempotent message processing.
 //
@@ -33,9 +34,6 @@ func Middleware(engine *idempo.Engine, opts ...Option) broker.Middleware {
 		panic("broker/idempotency: nil engine")
 	}
 
-	fpHeaders := append([]string(nil), cfg.FingerprintHeaders...)
-	sort.Strings(fpHeaders)
-
 	return func(next broker.Handler) broker.Handler {
 		return func(event broker.Event) error {
 			msg := event.Message()
@@ -48,12 +46,16 @@ func Middleware(engine *idempo.Engine, opts ...Option) broker.Middleware {
 				return next(event)
 			}
 
-			fp, err := buildFingerprint(event, cfg, fpHeaders)
+			fp, err := buildFingerprint(event, cfg, cfg.FingerprintHeaders)
 			if err != nil {
 				return err
 			}
 
 			ctx := msg.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
+
 			// When waiting is enabled, the key can disappear if the owner unlocks on failure.
 			// Retry once to attempt to acquire a fresh lock instead of returning ErrKeyNotFound.
 			for attempt := 0; attempt < 2; attempt++ {
@@ -68,6 +70,11 @@ func Middleware(engine *idempo.Engine, opts ...Option) broker.Middleware {
 				if result.Response != nil {
 					if cfg.OnReplay != nil {
 						cfg.OnReplay(event, result.Response)
+					}
+					if cfg.AckOnReplay {
+						if err := event.Ack(); err != nil {
+							return err
+						}
 					}
 					return nil
 				}
@@ -105,7 +112,7 @@ func resolveStoreKey(event broker.Event, cfg Config) (storeKey string, hasKey bo
 
 	key := rawKey
 	if cfg.UseTopicInKey {
-		key = event.Topic() + ":" + rawKey
+		key = event.Topic() + keySeparator + rawKey
 	}
 
 	return cfg.KeyPrefix + key, true, nil
@@ -141,9 +148,9 @@ func hashHeaders(header broker.Header, keys []string) string {
 		if k == "" {
 			continue
 		}
-		b.WriteString(k)
+		b.WriteString(strconv.Quote(k))
 		b.WriteByte('=')
-		b.WriteString(header.Get(k))
+		b.WriteString(strconv.Quote(header.Get(k)))
 		b.WriteByte('\n')
 	}
 

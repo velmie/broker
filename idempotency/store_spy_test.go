@@ -50,7 +50,7 @@ func (s *storeSpy) Create(
 		if !s.deletedOnCreate {
 			s.deletedOnCreate = true
 			s.mu.Unlock()
-			_ = s.inner.Delete(ctx, key, entry.Token)
+			_ = s.Delete(ctx, key, entry.Token)
 		} else {
 			s.mu.Unlock()
 		}

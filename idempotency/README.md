@@ -80,6 +80,7 @@ Available options:
 - `WithHeaderName(name)`: changes fallback header name (useful when upstream already uses a different key, e.g. `X-Idempotency-Key`).
 - `WithKeyPrefix(prefix)`: namespaces keys in a shared store (e.g. `"prod:wallet:"`).
 - `WithUseTopicInKey(bool)`: disable if you intentionally want a single key to dedupe across multiple topics.
+- `WithAckOnReplay(bool)`: explicitly `Ack()` replayed messages (useful when AutoAck is disabled).
 - `WithRequireKey(bool)`: when `true`, missing keys fail fast with `idempo.ErrMissingKey`; useful to enforce contracts for critical topics.
 - `WithKeyValidator(func(string) error)`: tighten validation for untrusted producers (length/charset/prefix checks).
 - `WithFingerprintHeaders(keys...)`: include specific `broker.Message.Header` keys in the default fingerprint (use when body is empty or important routing context lives in headers).
@@ -90,7 +91,7 @@ Available options:
   - `CommitFailClosedUnlock`: return commit error and unlock, allowing a retry to re-run the handler.
   - `CommitFailClosedKeepLock`: return commit error and keep the lock until it expires (reduces stampede, delays retries).
 - `WithCommitErrorHandler(func(event, err))`: hook for logging/metrics when storing the marker fails.
-- `WithOnReplay(func(event, resp))`: hook for replay observability (metrics/logging). It can also be used to explicitly `event.Ack()` in manual-ack setups. Note: `resp` is just a stored completion marker in this adapter (it does not contain the original message or handler result).
+- `WithOnReplay(func(event, resp))`: hook for replay observability (metrics/logging). Note: `resp` is just a stored completion marker in this adapter (it does not contain the original message or handler result).
 
 ## Manual Ack (when you disabled AutoAck)
 
@@ -99,14 +100,13 @@ If you subscribe with `broker.DisableAutoAck()`, make sure you:
 1. `Ack()` in the handler on the first successful processing, and
 2. also `Ack()` on replays (otherwise the broker may redeliver the same message forever).
 
+Use `WithAckOnReplay(true)` to acknowledge replays:
+
 ```go
-mw := idempotency.Middleware(
-	engine,
-	idempotency.WithOnReplay(func(e broker.Event, _ *idempo.Response) {
-		_ = e.Ack()
-	}),
-)
+mw := idempotency.Middleware(engine, idempotency.WithAckOnReplay(true))
 ```
+
+Or, if you want custom logic (metrics, logging, conditional ack), use `WithOnReplay`.
 
 ## In-Progress Behavior
 

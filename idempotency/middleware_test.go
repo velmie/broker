@@ -18,13 +18,14 @@ type testEvent struct {
 	msg   *broker.Message
 
 	ackCalls int
+	ackErr   error
 }
 
 func (e *testEvent) Topic() string            { return e.topic }
 func (e *testEvent) Message() *broker.Message { return e.msg }
 func (e *testEvent) Ack() error {
 	e.ackCalls++
-	return nil
+	return e.ackErr
 }
 
 func TestMiddleware_StoresSuccessAndSkipsReplay(t *testing.T) {

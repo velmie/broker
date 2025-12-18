@@ -2,6 +2,7 @@ package idempotency
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -42,6 +43,12 @@ type Config struct {
 	KeyPrefix string
 	// UseTopicInKey scopes the key by topic (storeKey = KeyPrefix + topic + ":" + key).
 	UseTopicInKey bool
+
+	// AckOnReplay acknowledges a message when it is treated as a replay.
+	// This is useful when you subscribe with AutoAck disabled and still want replays to be acknowledged.
+	//
+	// Do not enable this when your subscriber already auto-acks successful handler returns.
+	AckOnReplay bool
 
 	// RequireKey makes missing keys an error (ErrMissingKey). When false and a key is missing,
 	// the middleware becomes a no-op and passes the event through.
@@ -89,6 +96,16 @@ func WithKeyPrefix(prefix string) Option {
 func WithUseTopicInKey(enabled bool) Option {
 	return func(c *Config) {
 		c.UseTopicInKey = enabled
+	}
+}
+
+// WithAckOnReplay toggles whether replayed messages should be explicitly acknowledged.
+//
+// This option is intended for manual-ack setups (AutoAck disabled). For auto-ack subscriptions,
+// replay is already acknowledged by returning nil.
+func WithAckOnReplay(enabled bool) Option {
+	return func(c *Config) {
+		c.AckOnReplay = enabled
 	}
 }
 
@@ -165,11 +182,39 @@ func NewConfig(opts ...Option) Config {
 	if c.KeyValidator == nil {
 		c.KeyValidator = defaultKeyValidator
 	}
-	c.HeaderName = strings.TrimSpace(c.HeaderName)
-	for i := range c.FingerprintHeaders {
-		c.FingerprintHeaders[i] = strings.TrimSpace(c.FingerprintHeaders[i])
+	if c.CommitTimeout <= 0 {
+		c.CommitTimeout = defaultCommitTimeout
 	}
+	switch c.CommitErrorMode {
+	case CommitFailOpen, CommitFailClosedUnlock, CommitFailClosedKeepLock:
+	default:
+		c.CommitErrorMode = CommitFailOpen
+	}
+	c.HeaderName = strings.TrimSpace(c.HeaderName)
+	c.FingerprintHeaders = normalizeHeaders(c.FingerprintHeaders)
 	return c
+}
+
+func normalizeHeaders(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, h := range in {
+		h = strings.TrimSpace(h)
+		if h == "" {
+			continue
+		}
+		if _, ok := seen[h]; ok {
+			continue
+		}
+		seen[h] = struct{}{}
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func defaultKeyValidator(k string) error {

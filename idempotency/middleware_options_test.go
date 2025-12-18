@@ -22,6 +22,31 @@ func TestMiddleware_PanicsOnNilEngine(t *testing.T) {
 	_ = idempotency.Middleware(nil)
 }
 
+func TestNewConfig_NormalizesFingerprintHeaders(t *testing.T) {
+	cfg := idempotency.NewConfig(idempotency.WithFingerprintHeaders(" B ", "A", "", "A", "B", " "))
+
+	if len(cfg.FingerprintHeaders) != 2 {
+		t.Fatalf("expected 2 headers, got: %v", cfg.FingerprintHeaders)
+	}
+	if cfg.FingerprintHeaders[0] != "A" || cfg.FingerprintHeaders[1] != "B" {
+		t.Fatalf("expected sorted unique headers [A B], got: %v", cfg.FingerprintHeaders)
+	}
+}
+
+func TestNewConfig_NormalizesCommitOptions(t *testing.T) {
+	cfg := idempotency.NewConfig(
+		idempotency.WithCommitTimeout(0),
+		idempotency.WithCommitErrorMode(idempotency.CommitErrorMode(123)),
+	)
+
+	if cfg.CommitTimeout <= 0 {
+		t.Fatalf("expected CommitTimeout to be normalized to a positive default, got: %v", cfg.CommitTimeout)
+	}
+	if cfg.CommitErrorMode != idempotency.CommitFailOpen {
+		t.Fatalf("expected CommitErrorMode to be normalized to CommitFailOpen, got: %v", cfg.CommitErrorMode)
+	}
+}
+
 func TestMiddleware_CommitFailOpen_IgnoresCommitErrorAndUnlocks(t *testing.T) {
 	store := memory.New()
 	t.Cleanup(func() { _ = store.Close() })
@@ -243,10 +268,19 @@ func TestMiddleware_CommitFailClosedKeepLock_KeepsLockUntilTTL(t *testing.T) {
 		t.Fatalf("expected in-progress attempt to skip handler, calls=%d", calls)
 	}
 
-	time.Sleep(70 * time.Millisecond)
-
-	if err := h(evt); err != nil {
-		t.Fatalf("expected success after lock TTL expiration, got: %v", err)
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for {
+		err := h(evt)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, idempo.ErrInProgress) {
+			t.Fatalf("expected ErrInProgress while waiting for lock TTL, got: %v", err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout waiting for lock TTL expiration, last err: %v", err)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 	if calls != 2 {
 		t.Fatalf("expected handler to run again after lock TTL expiration, calls=%d", calls)
@@ -574,6 +608,56 @@ func TestMiddleware_WithFingerprintHeaders_DetectsHeaderChangeAsConflict(t *test
 	}
 }
 
+func TestMiddleware_WithFingerprintHeaders_HashIsUnambiguous(t *testing.T) {
+	store := memory.New()
+	t.Cleanup(func() { _ = store.Close() })
+
+	engine := idempo.NewEngine(store)
+	mw := idempotency.Middleware(engine, idempotency.WithFingerprintHeaders("A", "B"))
+
+	calls := 0
+	h := mw(func(broker.Event) error {
+		calls++
+		return nil
+	})
+
+	evt := &testEvent{
+		topic: "topic",
+		msg: &broker.Message{
+			ID:     "1",
+			Header: make(broker.Header),
+			Body:   []byte("hello"),
+		},
+	}
+	evt.msg.Header.Set("A", "1\nB=2")
+
+	if err := h(evt); err != nil {
+		t.Fatalf("expected success, got: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected handler call, calls=%d", calls)
+	}
+
+	evt2 := &testEvent{
+		topic: "topic",
+		msg: &broker.Message{
+			ID:     "1",
+			Header: make(broker.Header),
+			Body:   []byte("hello"),
+		},
+	}
+	evt2.msg.Header.Set("A", "1")
+	evt2.msg.Header.Set("B", "2\nB=")
+
+	err := h(evt2)
+	if err == nil || !errors.Is(err, idempo.ErrKeyConflict) {
+		t.Fatalf("expected ErrKeyConflict, got: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected conflict to skip handler, calls=%d", calls)
+	}
+}
+
 func TestMiddleware_WithFingerprintFunc_CanDedupAcrossTopicsWhenUseTopicInKeyDisabled(t *testing.T) {
 	store := memory.New()
 	t.Cleanup(func() { _ = store.Close() })
@@ -692,6 +776,51 @@ func TestMiddleware_OnReplay_IsCalledAndCanAck(t *testing.T) {
 	}
 	if replays != 1 {
 		t.Fatalf("expected one replay callback, replays=%d", replays)
+	}
+	if evt.ackCalls != 1 {
+		t.Fatalf("expected Ack to be called on replay, calls=%d", evt.ackCalls)
+	}
+}
+
+func TestMiddleware_AckOnReplay_AcksAndReturnsAckError(t *testing.T) {
+	store := memory.New()
+	t.Cleanup(func() { _ = store.Close() })
+
+	engine := idempo.NewEngine(store)
+	mw := idempotency.Middleware(engine, idempotency.WithAckOnReplay(true))
+
+	calls := 0
+	h := mw(func(broker.Event) error {
+		calls++
+		return nil
+	})
+
+	evt := &testEvent{
+		topic: "topic",
+		msg: &broker.Message{
+			ID:     "1",
+			Header: make(broker.Header),
+			Body:   []byte("hello"),
+		},
+	}
+	if err := h(evt); err != nil {
+		t.Fatalf("expected success, got: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected handler call, calls=%d", calls)
+	}
+	if evt.ackCalls != 0 {
+		t.Fatalf("expected Ack to not be called on first delivery, calls=%d", evt.ackCalls)
+	}
+
+	evt.ackErr = errors.New("ack failed")
+
+	err := h(evt)
+	if err == nil || !errors.Is(err, evt.ackErr) {
+		t.Fatalf("expected ack error, got: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected replay to skip handler, calls=%d", calls)
 	}
 	if evt.ackCalls != 1 {
 		t.Fatalf("expected Ack to be called on replay, calls=%d", evt.ackCalls)
