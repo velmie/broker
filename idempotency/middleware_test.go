@@ -16,11 +16,16 @@ import (
 type testEvent struct {
 	topic string
 	msg   *broker.Message
+
+	ackCalls int
 }
 
 func (e *testEvent) Topic() string            { return e.topic }
 func (e *testEvent) Message() *broker.Message { return e.msg }
-func (e *testEvent) Ack() error               { return nil }
+func (e *testEvent) Ack() error {
+	e.ackCalls++
+	return nil
+}
 
 func TestMiddleware_StoresSuccessAndSkipsReplay(t *testing.T) {
 	store := memory.New()
