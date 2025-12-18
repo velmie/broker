@@ -27,7 +27,7 @@ const keySeparator = ":"
 // (see WithFingerprintHeaders). Reusing the same key with a different fingerprint returns idempo.ErrKeyConflict.
 //
 // On replay, the wrapped handler is skipped and Middleware returns nil.
-// This assumes subscriptions use AutoAck=true; otherwise replays may never be acknowledged.
+// If you subscribe with AutoAck disabled, enable WithAckOnReplay(true) or handle acks yourself (for example via WithOnReplay).
 func Middleware(engine *idempo.Engine, opts ...Option) broker.Middleware {
 	cfg := NewConfig(opts...)
 	if engine == nil {

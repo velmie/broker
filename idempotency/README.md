@@ -159,5 +159,5 @@ This middleware delegates persistence and concurrency policy to the idempotency 
 ## Nuances & Caveats
 
 - **You need a stable key.** Set `broker.Message.ID` in producers to a deterministic, unique identifier for the business operation (not a random UUID per retry).
-- **AutoAck matters.** This middleware is designed for `AutoAck=true` (broker default). If you disable auto-ack, replays won't be acknowledged unless you do it yourself (e.g. via `WithOnReplay(func(e, _){ _ = e.Ack() })`).
+- **AutoAck matters.** This middleware is designed for `AutoAck=true` (broker default). If you disable auto-ack, replays won't be acknowledged unless you handle it (for example via `WithAckOnReplay(true)` or `WithOnReplay`).
 - **This is not HTTP replay.** The middleware stores only a completion marker, it does not reconstruct handler results. Design handlers so that "replay == no-op" is correct.
