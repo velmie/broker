@@ -4,17 +4,19 @@ package otelbroker_test
 
 import (
 	"context"
+	"sync"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.uber.org/mock/gomock"
+
 	"github.com/velmie/broker"
 	mock_broker "github.com/velmie/broker/mock"
 	"github.com/velmie/broker/otelbroker"
 	mock_otelbroker "github.com/velmie/broker/otelbroker/mock"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
-	"go.uber.org/mock/gomock"
-	"sync"
-	"testing"
 )
 
 // this is wrapper for the global otel propagator

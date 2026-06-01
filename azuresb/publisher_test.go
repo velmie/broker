@@ -8,6 +8,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 	"github.com/stretchr/testify/require"
+
 	"github.com/velmie/broker"
 
 	"github.com/velmie/broker/azuresb"

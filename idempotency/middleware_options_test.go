@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/velmie/broker"
-	"github.com/velmie/broker/idempotency"
 	"github.com/velmie/idempo"
 	"github.com/velmie/idempo/memory"
+
+	"github.com/velmie/broker"
+	"github.com/velmie/broker/idempotency"
 )
 
 func TestMiddleware_PanicsOnNilEngine(t *testing.T) {

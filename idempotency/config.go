@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/velmie/broker"
 	"github.com/velmie/idempo"
+
+	"github.com/velmie/broker"
 )
 
 const (

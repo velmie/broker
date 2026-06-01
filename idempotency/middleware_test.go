@@ -7,10 +7,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/velmie/broker"
-	"github.com/velmie/broker/idempotency"
 	"github.com/velmie/idempo"
 	"github.com/velmie/idempo/memory"
+
+	"github.com/velmie/broker"
+	"github.com/velmie/broker/idempotency"
 )
 
 type testEvent struct {
