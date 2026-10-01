@@ -6,6 +6,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 	"github.com/pkg/errors"
+
 	"github.com/velmie/broker"
 )
 

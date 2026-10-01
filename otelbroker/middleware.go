@@ -1,12 +1,13 @@
 package otelbroker
 
 import (
-	"github.com/velmie/broker"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/velmie/broker"
 )
 
 // PublisherMiddleware creates a middleware for broker.Publisher that integrates tracing.

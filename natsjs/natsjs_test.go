@@ -44,7 +44,7 @@ func startServer() (*server, error) {
 
 	cont, err := pool.RunWithOptions(&dockertest.RunOptions{
 		Repository: "nats",
-		Tag:        "latest",
+		Tag:        "2.14.1-alpine",
 		Cmd: []string{
 			"--jetstream",
 		},

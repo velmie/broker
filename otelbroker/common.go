@@ -1,10 +1,11 @@
 package otelbroker
 
 import (
-	"github.com/velmie/broker"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.18.0"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/velmie/broker"
 )
 
 // ScopeName is the instrumentation scope name.
