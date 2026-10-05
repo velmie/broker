@@ -1,0 +1,15 @@
+{
+  "body": "{\"event\":\"order.created\",\"order_id\":\"example-order-001\"}\n",
+  "domain_id": "example-event-001",
+  "headers": {
+    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    "tracestate": "example=opaque",
+    "event_type": "order.created",
+    "schema_version": "1",
+    "source": "example-publisher",
+    "tenant": "synthetic-tenant",
+    "region": "test",
+    "content_type": "application/json",
+    "routing_key": "orders"
+  }
+}

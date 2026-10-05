@@ -2,55 +2,56 @@ package broker
 
 import (
 	"context"
-	"fmt"
+	"errors"
 )
 
-// Encoder defines how to encode message data
-type Encoder interface {
-	Encode(v any) ([]byte, error)
+// ReplyTarget identifies an approved destination and stable response metadata.
+// Publisher must be usable and Metadata.ID nonempty. Headers remain read-only
+// until reply publication returns. Request identity and response identity are
+// distinct; the resolver supplies any desired correlation mapping explicitly.
+type ReplyTarget struct {
+	Publisher Publisher
+	Metadata  MessageMetadata
 }
 
-// EncoderFunc wraps the decoding function to use it as a Encoder
-// json.Marshal can be used as a encoder
-type EncoderFunc func(v any) ([]byte, error)
+// ReplyResolver validates routing and response identity before business work.
+// It must select an authorized destination, never blindly trust an input header,
+// and return the same response ID for repeated processing of the same request.
+// A fixed destination can use a closure. Returning no destination is an error.
+type ReplyResolver func(context.Context, Message) (ReplyTarget, error)
 
-func (f EncoderFunc) Encode(v any) ([]byte, error) {
-	return f(v)
-}
-
-// CreateReplyHandler creates a handler that replies to topic specified by the message header with a message that
-// contains the data returned by the passed consumerFunc
-func CreateReplyHandler[REQ any, RESP any](
-	dec Decoder,
-	enc Encoder,
-	pub Publisher,
-	consumerFunc func(ctx context.Context, target REQ) (RESP, error),
-	middleware ...Middleware,
+// NewReplyHandler decodes and optionally binds correlation metadata, resolves an
+// approved reply target, invokes the business callback, then encodes and publishes
+// its response. Only successful publication requests Handled. Only callback
+// failures get StageHandle and can enter WithRedelivery's application classifier.
+//
+// All constructor arguments are required. A one-way request uses NewTypedHandler.
+// Business effects, reply publication and request settlement are not atomic.
+// Lost responses and redelivery can repeat effects or replies. Stable identity
+// does not replace application idempotency. The adapter's publication guarantee
+// applies; this helper does not wait for downstream response processing.
+func NewReplyHandler[Q, R any](
+	decoder DecoderFunc[Q], encoder Encoder, resolver ReplyResolver,
+	callback func(context.Context, Q) (R, error), options ...HandlerOption,
 ) Handler {
-	runConsumerFunc := func(ctx context.Context, event Event, target REQ) error {
-		resp, err := consumerFunc(ctx, target)
+	return NewTypedDeliveryHandler(decoder, func(ctx context.Context, delivery Delivery, request Q) (Disposition, error) {
+		target, err := resolver(ctx, delivery.Message())
 		if err != nil {
-			return err
+			return nil, &StageError{Stage: StageResolve, Cause: err}
 		}
-		reqMsg := event.Message()
-		if replyTopic := reqMsg.Header.GetReplyTo(); replyTopic != "" {
-			msg := NewMessageWithContext(ctx)
-			if correlationID := reqMsg.Header.GetCorrelationID(); correlationID != "" {
-				msg.Header.SetCorrelationID(correlationID)
-			}
-			body, eErr := enc.Encode(resp)
-			if eErr != nil {
-				return fmt.Errorf("cannot encode message body: %w", eErr)
-			}
-			msg.Body = body
-			msg.Header.SetReplyMessageID(reqMsg.ID)
-
-			if pErr := pub.Publish(replyTopic, msg); pErr != nil {
-				return fmt.Errorf("cannot publish message to the %q topic: %w", replyTopic, pErr)
-			}
+		if target.Publisher == nil {
+			return nil, &StageError{Stage: StageResolve, Cause: errors.New("reply Publisher: missing destination")}
 		}
-		return nil
-	}
-
-	return createHandler(dec, runConsumerFunc, middleware...)
+		if target.Metadata.ID == "" {
+			return nil, &StageError{Stage: StageResolve, Cause: errors.New("reply Metadata.ID: must not be empty")}
+		}
+		response, err := callback(ctx, request)
+		if err != nil {
+			return nil, &StageError{Stage: StageHandle, Cause: err}
+		}
+		if err := publishValue(ctx, encoder, target.Publisher, target.Metadata, response); err != nil {
+			return nil, err
+		}
+		return Handled{}, nil
+	}, options...)
 }

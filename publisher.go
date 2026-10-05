@@ -1,49 +1,67 @@
 package broker
 
-//go:generate go run go.uber.org/mock/mockgen@v0.3.0 -source publisher.go -destination ./mock/publisher.go
+import "context"
 
-// Publisher defines an interface for publishing messages to a specific topic.
-// Implementations of this interface should handle the logic for sending messages
-// to the designated topic.
+// Publisher is destination-bound. Success means the adapter's documented
+// publication guarantee, not downstream processing or cross-resource atomicity.
 type Publisher interface {
-	// Publish sends a message to the specified topic.
-	Publish(topic string, message *Message) error
+	Publish(context.Context, Message) error
 }
 
-// PublisherMiddleware defines a function type used for creating middleware for a Publisher.
-// Middleware can be used to add additional functionality like logging, metrics, or error handling
-// to the publish process.
-type PublisherMiddleware func(next Publisher) Publisher
+// PublisherFunc adapts a publication function to a destination-bound Publisher.
+type PublisherFunc func(context.Context, Message) error
 
-// PublisherFunc is an adapter to allow the use of ordinary functions as Publishers.
-type PublisherFunc func(topic string, message *Message) error
+// PublisherMiddleware wraps a publisher. It must preserve context, message data
+// and errors unless its documented policy changes them. Input data is read-only.
+type PublisherMiddleware func(Publisher) Publisher
 
-// Publish calls f(topic, message), effectively invoking the function wrapped by the PublisherFunc type.
-func (f PublisherFunc) Publish(topic string, message *Message) error {
-	return f(topic, message)
+// MessageMetadata supplies application-owned identity and ordered headers.
+// A logical ID is optional for ordinary publication. Adapter restrictions still
+// apply. Header storage is read-only until the publication call returns.
+type MessageMetadata struct {
+	ID      string
+	Headers []Header
 }
 
-// PublishWithInstanceID returns a PublisherMiddleware that ensures every published message
-// includes the specified instance ID in its headers. This middleware can be used to trace
-// which instance of a service or application published the message, aiding in diagnostics
-// and system monitoring in distributed environments.
-//
-// Parameters:
-//
-//	id - The unique identifier of the instance to be set in the message's header.
-//
-// Returns:
-//
-//	A PublisherMiddleware function that takes a Publisher and returns a new Publisher
-//	which sets the instance ID in the message header before publishing.
-func PublishWithInstanceID(id string) PublisherMiddleware {
-	return func(next Publisher) Publisher {
-		return PublisherFunc(func(topic string, message *Message) error {
-			if message.Header == nil {
-				message.Header = make(Header)
-			}
-			message.Header.SetInstanceID(id)
-			return next.Publish(topic, message)
-		})
+// PublishFunc publishes an application value without exposing a raw message port.
+type PublishFunc[T any] func(context.Context, T) error
+
+// NewTypedPublisher resolves metadata, encodes and publishes in that order.
+// It never generates an ID or retries. Repeated logical publications need stable
+// application-supplied IDs. Failures retain their metadata, encode or publish
+// stage and original cause. Success has the underlying publisher's guarantee.
+// All arguments are required. Their concurrency must match the caller's use.
+func NewTypedPublisher[T any](
+	encoder Encoder, publisher Publisher, metadata func(context.Context, T) (MessageMetadata, error),
+) PublishFunc[T] {
+	return func(ctx context.Context, value T) error {
+		fields, err := metadata(ctx, value)
+		if err != nil {
+			return &StageError{Stage: StageMetadata, Cause: err}
+		}
+		return publishValue(ctx, encoder, publisher, fields, value)
 	}
+}
+
+// WrapPublisher composes first-outermost: a(b(p)). A later call wraps the current
+// publisher. An empty list returns publisher. The publisher and wrappers are
+// required to be non-nil. A wrapper must copy any caller storage it changes.
+func WrapPublisher(publisher Publisher, middleware ...PublisherMiddleware) Publisher {
+	for i := len(middleware) - 1; i >= 0; i-- {
+		publisher = middleware[i](publisher)
+	}
+	return publisher
+}
+
+func (f PublisherFunc) Publish(ctx context.Context, message Message) error { return f(ctx, message) }
+
+func publishValue(ctx context.Context, encoder Encoder, publisher Publisher, metadata MessageMetadata, value any) error {
+	body, err := encoder.Encode(value)
+	if err != nil {
+		return &StageError{Stage: StageEncode, Cause: err}
+	}
+	if err = publisher.Publish(ctx, Message{ID: metadata.ID, Headers: metadata.Headers, Body: body}); err != nil {
+		return &StageError{Stage: StagePublish, Cause: err}
+	}
+	return nil
 }

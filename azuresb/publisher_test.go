@@ -1,177 +1,227 @@
-package azuresb_test
+package azuresb
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"sync"
+	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
-	"github.com/stretchr/testify/require"
+	"github.com/Azure/go-amqp"
 
 	"github.com/velmie/broker"
-
-	"github.com/velmie/broker/azuresb"
 )
 
-type fakeASBSender struct {
-	sendCalled bool
-	sentMsg    *azservicebus.Message
-	sendErr    error
-	lastCtx    context.Context
+type nativeSenderFunc func(context.Context, *azservicebus.Message, *azservicebus.SendMessageOptions) error
+
+func (f nativeSenderFunc) SendMessage(ctx context.Context, message *azservicebus.Message, options *azservicebus.SendMessageOptions) error {
+	return f(ctx, message, options)
 }
 
-func (f *fakeASBSender) SendMessage(ctx context.Context, msg *azservicebus.Message, opts *azservicebus.SendMessageOptions) error {
-	f.sendCalled = true
-	f.sentMsg = msg
-	f.lastCtx = ctx
-	return f.sendErr
+func TestPublisherNativeMappingDoesNotAliasInput(t *testing.T) {
+	original := broker.Message{ID: "event-1", Body: []byte{0, 255}, Headers: []broker.Header{
+		{Name: "traceparent", Value: []byte("trace")}, {Name: "encoded", Value: []byte("/wE=")},
+	}}
+	var received *azservicebus.Message
+	sender := nativeSenderFunc(func(_ context.Context, m *azservicebus.Message, _ *azservicebus.SendMessageOptions) error {
+		received = m
+		if m.MessageID == nil || *m.MessageID != "event-1" || m.ApplicationProperties["id"] != "event-1" ||
+			m.ApplicationProperties["traceparent"] != "trace" || m.ApplicationProperties["encoded"] != "/wE=" {
+			t.Fatalf("native mapping: %+v", m)
+		}
+		m.Body[0] = 42
+		m.ApplicationProperties["encoded"] = "mutated"
+		*m.MessageID = "mutated"
+		return nil
+	})
+	publisher, err := NewPublisher(sender, PublisherConfig{Source: "orders/publish"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = publisher.Publish(context.Background(), original); err != nil {
+		t.Fatal(err)
+	}
+	if received == nil ||
+		original.ID != "event-1" ||
+		!bytes.Equal(original.Body,
+			[]byte{0,
+				255}) ||
+		string(original.Headers[1].Value) != "/wE=" {
+		t.Fatal("native sender mutated caller storage")
+	}
 }
 
-type fakeSenderFactory struct {
-	createSenderFunc func(topic string) (azuresb.ASBSender, error)
-	createCount      int
-	mu               sync.Mutex
-}
-
-func (f *fakeSenderFactory) CreateSender(topic string) (azuresb.ASBSender, error) {
-	f.mu.Lock()
-	f.createCount++
-	f.mu.Unlock()
-	return f.createSenderFunc(topic)
-}
-
-func anyMapToHeader(in map[string]any) broker.Header {
-	out := make(broker.Header, len(in))
-	for k, v := range in {
-		if s, ok := v.(string); ok {
-			out[k] = s
+func TestPublisherRejectsAmbiguousMetadataBeforeNativeEffects(t *testing.T) {
+	calls := 0
+	publisher, err := NewPublisher(nativeSenderFunc(func(context.Context, *azservicebus.Message, *azservicebus.SendMessageOptions) error {
+		calls++
+		return nil
+	}), PublisherConfig{Source: "orders"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []broker.Message{
+		{ID: "event", Headers: []broker.Header{{Name: "id", Value: []byte("other")}}},
+		{ID: "event", Headers: []broker.Header{{Name: "ID", Value: []byte("event")}}},
+		{ID: "event", Headers: []broker.Header{{Name: "same", Value: []byte("a")}, {Name: "same", Value: []byte("b")}}},
+		{ID: string([]byte{255})},
+		{ID: "event", Headers: []broker.Header{{Name: string([]byte{255}), Value: []byte("value")}}},
+	}
+	for i, input := range cases {
+		err = publisher.Publish(context.Background(), input)
+		var field *FieldError
+		var operation *OperationError
+		if !errors.As(err, &field) || !errors.As(err, &operation) || operation.Source != "orders" || field.Field == "" {
+			t.Errorf("case%d field/source missing: %v", i, err)
 		}
 	}
-	return out
+	if calls != 0 {
+		t.Fatal("invalid metadata reached native sender")
+	}
 }
 
-func TestPublisherPublishSuccess(t *testing.T) {
-	fakeSender := &fakeASBSender{}
-	factory := &fakeSenderFactory{
-		createSenderFunc: func(topic string) (azuresb.ASBSender, error) {
-			return fakeSender, nil
-		},
+func TestDetachPreservesScalarPropertiesAndSnapshots(t *testing.T) {
+	locked := time.Now().UTC().Truncate(time.Millisecond)
+	enqueued := locked.Add(-time.Minute)
+	sequence := int64(7)
+	uuid := amqp.UUID{1, 2, 3}
+	native := &azservicebus.ReceivedMessage{MessageID: "event",
+		Body:           []byte("body"),
+		DeliveryCount:  2,
+		LockedUntil:    &locked,
+		EnqueuedTime:   &enqueued,
+		SequenceNumber: &sequence,
+		ApplicationProperties: map[string]any{
+			"id": "event",
+			"binary": []byte{0,
+				255},
+			"count":    int64(-42),
+			"flag":     true,
+			"fraction": float64(1.5),
+			"when":     enqueued,
+			"uuid":     uuid,
+			"symbol":   amqp.Symbol("label"),
+		}}
+	delivery, err := detach(native, "orders")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	pub := azuresb.NewPublisher(factory)
-	topic := "test-topic"
-	msgID := "msg-123"
-
-	message := broker.NewMessage()
-	message.Body = []byte("test-body")
-	message.ID = msgID
-	message.Header = broker.Header{}
-
-	err := pub.Publish(topic, message)
-	require.NoError(t, err)
-
-	require.True(t, fakeSender.sendCalled, "expected SendMessage to be called")
-	require.NotNil(t, fakeSender.sentMsg)
-
-	require.Equal(t, []byte("test-body"), fakeSender.sentMsg.Body)
-	require.NotNil(t, fakeSender.sentMsg.MessageID)
-	require.Equal(t, msgID, *fakeSender.sentMsg.MessageID)
-
-	expectedHeader := message.Header
-	require.Equal(t, expectedHeader, anyMapToHeader(fakeSender.sentMsg.ApplicationProperties))
+	if delivery.Message().ID != "event" || delivery.Source() != "orders" || delivery.Attempt() != (broker.Attempt{Known: true, Number: 2}) {
+		t.Fatalf("delivery: %+v", delivery)
+	}
+	values := map[string][]byte{}
+	for _, h := range delivery.Message().Headers {
+		values[h.Name] = h.Value
+	}
+	if string(values["count"]) != "-42" ||
+		string(values["flag"]) != "true" ||
+		string(values["fraction"]) != "1.5" ||
+		string(values["when"]) != enqueued.Format(time.RFC3339Nano) ||
+		string(values["symbol"]) != "label" {
+		t.Fatalf("scalar header conversion: %v", values)
+	}
+	metadata := delivery.Metadata()
+	if !reflect.DeepEqual(metadata.ApplicationProperties["uuid"],
+		uuid) ||
+		!reflect.DeepEqual(metadata.ApplicationProperties["count"],
+			int64(-42)) {
+		t.Fatal("native scalar types lost")
+	}
+	native.Body[0] = 'x'
+	native.ApplicationProperties["binary"].([]byte)[0] = 42
+	locked = locked.Add(time.Hour)
+	metadata.ApplicationProperties["binary"].([]byte)[1] = 42
+	if string(delivery.Message().Body) != "body" ||
+		!bytes.Equal(delivery.Metadata().ApplicationProperties["binary"].([]byte),
+			[]byte{0,
+				255}) ||
+		!delivery.Metadata().LockedUntil.Equal(metadata.LockedUntil) {
+		t.Fatal("native or metadata mutation changed retained delivery")
+	}
 }
 
-func TestPublisherPublishSenderError(t *testing.T) {
-	fakeSender := &fakeASBSender{
-		sendErr: errors.New("send failed"),
+func TestDetachRejectsAmbiguousOrUnsupportedProperties(t *testing.T) {
+	for _, props := range []map[string]any{{"id": "conflict"},
+		{"ID": "event"},
+		{"id": []byte("event")},
+		{"nested": map[string]any{"sensitive": "value"}},
+		{"bad": []string{"value"}},
+		{"bad": func() {}},
+		{"text": string([]byte{255})}} {
+		_, err := detach(&azservicebus.ReceivedMessage{MessageID: "event", ApplicationProperties: props}, "orders")
+		var field *FieldError
+		if !errors.As(err, &field) || field.Field == "" || errors.Unwrap(field) == nil {
+			t.Fatalf("invalid property lost field/cause: %v", err)
+		}
 	}
-	factory := &fakeSenderFactory{
-		createSenderFunc: func(topic string) (azuresb.ASBSender, error) {
-			return fakeSender, nil
-		},
+	delivery, err := detach(&azservicebus.ReceivedMessage{}, "orders")
+	if err != nil {
+		t.Fatal(err)
 	}
-	pub := azuresb.NewPublisher(factory)
-	topic := "test-topic"
-
-	message := broker.NewMessage()
-	message.Body = []byte("body")
-	message.ID = "id1"
-	message.Header = broker.Header{}
-
-	err := pub.Publish(topic, message)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "azuresb: cannot send message")
+	if delivery.Attempt().Known || delivery.Message().ID != "" {
+		t.Fatal("invented attempt or identity")
+	}
 }
 
-func TestPublisherCreateSenderError(t *testing.T) {
-	factory := &fakeSenderFactory{
-		createSenderFunc: func(topic string) (azuresb.ASBSender, error) {
-			return nil, errors.New("create failed")
-		},
+func TestDetachNilNativeDeliveryIsMetadataFailure(t *testing.T) {
+	_, err := detach(nil, "orders")
+	var field *FieldError
+	if !errors.As(err, &field) || field.Field != "Message" {
+		t.Fatalf("nil native delivery lost field: %v", err)
 	}
-	pub := azuresb.NewPublisher(factory)
-	topic := "test-topic"
-
-	message := broker.NewMessage()
-	message.Body = []byte("body")
-	message.ID = "id1"
-	message.Header = broker.Header{}
-
-	err := pub.Publish(topic, message)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "azuresb: cannot create sender")
 }
 
-func TestPublisherCaching(t *testing.T) {
-	callCount := 0
-	fakeSender := &fakeASBSender{}
-	factory := &fakeSenderFactory{
-		createSenderFunc: func(topic string) (azuresb.ASBSender, error) {
-			callCount++
-			return fakeSender, nil
-		},
+func TestPublisherRequiresExplicitIdentityBeforeNativeSend(t *testing.T) {
+	calls := 0
+	publisher, err := NewPublisher(nativeSenderFunc(func(context.Context, *azservicebus.Message, *azservicebus.SendMessageOptions) error {
+		calls++
+		return nil
+	}), PublisherConfig{Source: "orders"})
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	pub := azuresb.NewPublisher(factory)
-	topic := "test-topic"
-
-	message1 := broker.NewMessage()
-	message1.Body = []byte("body1")
-	message1.ID = "id1"
-	message1.Header = broker.Header{}
-	err := pub.Publish(topic, message1)
-	require.NoError(t, err)
-
-	message2 := broker.NewMessage()
-	message2.Body = []byte("body2")
-	message2.ID = "id2"
-	message2.Header = broker.Header{}
-	err = pub.Publish(topic, message2)
-	require.NoError(t, err)
-
-	require.Equal(t, 1, callCount, "expected CreateSender to be called only once for the same topic")
+	err = publisher.Publish(context.Background(), broker.Message{Body: []byte("body")})
+	var field *FieldError
+	if !errors.As(err, &field) || field.Field != "ID" || calls != 0 {
+		t.Fatalf("missing logical identity reached native service: calls=%d err=%v", calls, err)
+	}
 }
 
-func TestPublisherCustomContext(t *testing.T) {
-	fakeSender := &fakeASBSender{}
-	factory := &fakeSenderFactory{
-		createSenderFunc: func(topic string) (azuresb.ASBSender, error) {
-			return fakeSender, nil
-		},
+func TestPublisherRejectsNativeBinaryPropertyBeforeSend(t *testing.T) {
+	calls := 0
+	publisher, err := NewPublisher(nativeSenderFunc(func(context.Context, *azservicebus.Message, *azservicebus.SendMessageOptions) error {
+		calls++
+		return nil
+	}), PublisherConfig{Source: "orders"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	pub := azuresb.NewPublisher(factory)
-	topic := "test-topic"
+	err = publisher.Publish(context.Background(),
+		broker.Message{ID: "event",
+			Body: []byte{0,
+				255},
+			Headers: []broker.Header{{Name: "opaque",
+				Value: []byte{255,
+					1}}}})
+	var field *FieldError
+	if !errors.As(err, &field) || field.Field != "ApplicationProperties.opaque" || calls != 0 {
+		t.Fatalf("unsupported native binary property reached service: calls=%d err=%v", calls, err)
+	}
+}
 
-	customCtx := context.WithValue(context.Background(), "key", "value")
-	message := broker.NewMessageWithContext(customCtx)
-	message.Body = []byte("body")
-	message.ID = "id"
-	message.Header = broker.Header{}
-
-	err := pub.Publish(topic, message)
-	require.NoError(t, err)
-
-	require.NotNil(t, fakeSender.lastCtx)
-	require.Equal(t, "value", fakeSender.lastCtx.Value("key"))
+func TestDetachUnsupportedPropertyRetainsNativeType(t *testing.T) {
+	_,
+		err := detach(&azservicebus.ReceivedMessage{MessageID: "event",
+		ApplicationProperties: map[string]any{"nested": map[string]any{"secret": "value"}}},
+		"orders")
+	var field *FieldError
+	if !errors.As(err,
+		&field) ||
+		field.Field != "ApplicationProperties.nested" ||
+		field.ValueType != "map[string]interface {}" ||
+		field.Cause == nil {
+		t.Fatalf("unsupported property type/field/cause lost: %v", err)
+	}
 }

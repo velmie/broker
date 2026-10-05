@@ -1,5 +1,9 @@
 # broker/idempotency
 
+This module uses the earlier Broker core v0 API and requires core v0.8.1.
+It cannot be combined with core v1 or successor adapters in the same Go build.
+See the [migration guide](../docs/migration.md) before changing those dependencies.
+
 Idempotency middleware for `github.com/velmie/broker` consumers, backed by `github.com/velmie/idempo`.
 
 It helps prevent duplicate side effects when a broker redelivers the same message (at-least-once delivery, retries, timeouts, consumer restarts).

@@ -1,94 +1,81 @@
 package broker
 
-import (
-	"context"
-	"fmt"
-	"reflect"
-)
+import "context"
 
-//go:generate go run go.uber.org/mock/mockgen@v0.3.0 -source decoder.go -destination ./mock/decoder.go
-
-// Decoder defines how to decode the given data into a value
-type Decoder interface {
-	Decode(data []byte, v any) error
+// Handler describes processing and its declared requirements. Callbacks, codecs
+// and middleware must support the concurrency of their configured consumers.
+type Handler struct {
+	callback          HandlerFunc
+	requirements      []Requirement
+	bindCorrelationID bool
 }
 
-// DecoderFunc wraps the decoding function to use it as a Decoder
-// json.Unmarshal can be used as a decoder
-type DecoderFunc func(data []byte, v any) error
+// HandlerFunc chooses one disposition. A non-nil error suppresses that result
+// and stops the run. Raw callback errors have no implicit retry classification.
+type HandlerFunc func(context.Context, Delivery) (Disposition, error)
 
-func (f DecoderFunc) Decode(data []byte, v any) error {
-	return f(data, v)
-}
+// HandlerOption configures a handler before it is used.
+type HandlerOption func(*Handler)
 
-// CreateHandler creates an event handler that uses a Decoder to decode event data into
-// a concrete value, which is then passed to the consumer function
-func CreateHandler[T any](
-	dec Decoder,
-	consumerFunc func(ctx context.Context, target T) error,
-	middleware ...Middleware,
-) Handler {
-	runConsumerFunc := func(ctx context.Context, _ Event, target T) error {
-		return consumerFunc(ctx, target)
+// NewHandler constructs a descriptor. The callback and each option are required
+// to be non-nil. A zero Handler is not executable.
+func NewHandler(callback HandlerFunc, options ...HandlerOption) Handler {
+	h := Handler{callback: callback}
+	for _, option := range options {
+		option(&h)
 	}
-
-	return createHandler(dec, runConsumerFunc, middleware...)
-}
-
-type CorrelationIDAware interface {
-	SetCorrelationID(id string)
-}
-
-func createHandler[T any](
-	dec Decoder,
-	consumerFunc func(ctx context.Context, event Event, target T) error,
-	middleware ...Middleware,
-) Handler {
-	h := func(event Event) error {
-		var target T
-		var targetPtr any
-
-		targetType := reflect.TypeOf(target)
-		if targetType == nil {
-			return fmt.Errorf("cannot determine type of target")
-		}
-
-		if targetType.Kind() == reflect.Pointer {
-			// T is a pointer type
-			// Allocate a new instance of the type pointed to by T
-			elemType := targetType.Elem()
-			targetValue := reflect.New(elemType)
-			target = targetValue.Interface().(T)
-			targetPtr = target
-		} else {
-			// T is not a pointer type; use the address of target
-			targetPtr = &target
-		}
-
-		message := event.Message()
-		if err := dec.Decode(message.Body, targetPtr); err != nil {
-			err = fmt.Errorf("failed to decode message body: %s", err)
-			return err
-		}
-
-		if correlationID := message.Header.GetCorrelationID(); correlationID != "" {
-			if corIDAware, ok := any(target).(CorrelationIDAware); ok {
-				corIDAware.SetCorrelationID(correlationID)
-			}
-			if corIDAware, ok := targetPtr.(CorrelationIDAware); ok {
-				corIDAware.SetCorrelationID(correlationID)
-			}
-		}
-
-		if err := consumerFunc(message.Context(), event, target); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	for _, mw := range middleware {
-		h = mw(h)
-	}
-
 	return h
 }
+
+// NewTypedHandler decodes a DTO and invokes an ordinary business callback.
+// Business errors get an outer StageHandle. Success requests Handled.
+func NewTypedHandler[T any](decoder DecoderFunc[T], callback func(context.Context, T) error, options ...HandlerOption) Handler {
+	return NewTypedDeliveryHandler(decoder, func(ctx context.Context, _ Delivery, value T) (Disposition, error) {
+		if err := callback(ctx, value); err != nil {
+			return nil, &StageError{Stage: StageHandle, Cause: err}
+		}
+		return Handled{}, nil
+	}, options...)
+}
+
+// NewTypedDeliveryHandler decodes a DTO while leaving metadata access and the
+// disposition to the transport callback. Its callback errors remain unclassified.
+func NewTypedDeliveryHandler[T any](
+	decoder DecoderFunc[T], callback func(context.Context, Delivery, T) (Disposition, error), options ...HandlerOption,
+) Handler {
+	var h Handler
+	h.callback = func(ctx context.Context, delivery Delivery) (Disposition, error) {
+		message := delivery.Message()
+		value, err := decode(decoder, message.Body)
+		if err != nil {
+			return nil, err
+		}
+		if h.bindCorrelationID {
+			if err := bindCorrelationID(&value, message.Headers); err != nil {
+				return nil, &StageError{Stage: StageMetadata, Cause: err}
+			}
+		}
+		return callback(ctx, delivery, value)
+	}
+	for _, option := range options {
+		option(&h)
+	}
+	return h
+}
+
+func (h Handler) Handle(ctx context.Context, delivery Delivery) (Disposition, error) {
+	return h.callback(ctx, delivery)
+}
+
+// Requirements returns a copy of the descriptor's declarations.
+func (h Handler) Requirements() []Requirement { return append([]Requirement(nil), h.requirements...) }
+
+// WithRequirements snapshots the list. Third-party values remain immutable.
+func WithRequirements(requirements ...Requirement) HandlerOption {
+	snapshot := append([]Requirement(nil), requirements...)
+	return func(h *Handler) { h.requirements = append(h.requirements, snapshot...) }
+}
+
+// WithCorrelationIDBinding enables one optional CorrelationIDSetter call after
+// decoding. Ambiguous or non-UTF-8 metadata fails before business execution.
+func WithCorrelationIDBinding() HandlerOption { return func(h *Handler) { h.bindCorrelationID = true } }

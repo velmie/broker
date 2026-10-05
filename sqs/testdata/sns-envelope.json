@@ -1,0 +1,49 @@
+{
+  "Type": "Notification",
+  "MessageId": "00000000-0000-4000-8000-000000000001",
+  "TopicArn": "arn:aws:sns:us-east-1:000000000000:example-events",
+  "Message": "{\"event\":\"order.created\",\"order_id\":\"example-order-001\"}\n",
+  "Timestamp": "2026-01-01T00:00:00.000Z",
+  "MessageAttributes": {
+    "traceparent": {
+      "Type": "String",
+      "Value": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    },
+    "tracestate": {
+      "Type": "String",
+      "Value": "example=opaque"
+    },
+    "event_type": {
+      "Type": "String",
+      "Value": "order.created"
+    },
+    "schema_version": {
+      "Type": "String",
+      "Value": "1"
+    },
+    "source": {
+      "Type": "String",
+      "Value": "example-publisher"
+    },
+    "tenant": {
+      "Type": "String",
+      "Value": "synthetic-tenant"
+    },
+    "region": {
+      "Type": "String",
+      "Value": "test"
+    },
+    "content_type": {
+      "Type": "String",
+      "Value": "application/json"
+    },
+    "routing_key": {
+      "Type": "String",
+      "Value": "orders"
+    },
+    "id": {
+      "Type": "String",
+      "Value": "example-event-001"
+    }
+  }
+}

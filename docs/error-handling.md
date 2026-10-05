@@ -1,50 +1,56 @@
-# Error handling
+# Errors and diagnostics
 
-In "broker", your handler returns an error and the backend decides what to do with the message. Most backends implement a common pattern:
+A non-nil handler error suppresses its disposition and stops the consumer run.
+Broker preserves original causes through wrapping and joining. Inspect them with
+`errors.Is` and `errors.As`, and keep independent cleanup failures visible.
 
-- handler returns `nil` and AutoAck is enabled: acknowledge the message
-- handler returns an error: do not acknowledge, optionally NAK/abandon, then call `ErrorHandler` if configured
+## Processing stages
 
-You attach error behavior via `SubscribeOption`:
+| Failure | Context |
+| --- | --- |
+| Decoder or nil pointer DTO | `DecodeError` |
+| Metadata binding | `StageMetadata` |
+| Ordinary typed business callback | `StageHandle` |
+| Reply destination or response identity | `StageResolve` |
+| Encoding | `StageEncode` |
+| Publication | `StagePublish` |
 
-```go
-_, err := sub.Subscribe(
-	"topic",
-	handler,
-	broker.WithErrorHandler(myErrorHandler),
-)
-```
+`NewTypedDeliveryHandler` leaves callback errors unclassified. If such a callback
+deliberately participates in `WithRedelivery`, it must return an appropriate
+`StageError` itself. A stage identifies what failed; it does not establish retry
+safety.
 
-## Built-in error handlers
+`WithRedelivery` selects explicitly staged business errors and requests native
+redelivery. Decode, reply-resolution and publication failures do not enter its
+classifier. The classifier must account for partial effects, including any
+publication performed inside the business function. `RetryAfter.Cause` retains
+the reason even when the returned error is nil.
 
-Core helpers:
+## Structured diagnostics
 
-- `LogErrorHandler(logger)` logs the error with the topic
-- `DelayErrorHandler(d, logger?)` sleeps before returning (useful to slow down hot loops)
-- `CombineErrorHandlers(...)` runs multiple handlers sequentially
-- `WithDefaultErrorHandler(sub, logger)` sets a default policy: log, wait 5s, then resubscribe
+`LogProcessing` passes original errors to `slog`, together with processing stage,
+source and duration. Successful callbacks are silent by default. It records
+processing outcomes; adapter observers report later acknowledgment, renewal or
+publication outcomes.
 
-Example:
+At serialization, inspect the original error tree and retain its operations,
+stages, affected fields and safe native codes. Redact application-specific
+data before output. Bound untrusted fields and keep independent cleanup
+causes visible. Do not serialize bodies, credentials or arbitrary SDK text.
 
-```go
-eh := broker.CombineErrorHandlers(
-	broker.LogErrorHandler(logger),
-	broker.DelayErrorHandler(2*time.Second, logger),
-	broker.ResubscribeErrorHandler(sub, broker.ResubscribeWithLogger(logger)),
-)
+Log a failure once at the boundary that can explain its outcome, with
+appropriate severity. A `slog` handler must report its own sink failures
+because the logger does not return them.
 
-_, _ = sub.Subscribe("topic", handler, broker.WithErrorHandler(eh))
-```
+## Consumer recovery
 
-## ResubscribeErrorHandler
+`WithConsumerRecovery` replaces a failed consumer run only when the supplied
+classifier accepts its complete error tree. `MaxRestarts` bounds replacements;
+`Backoff` separates them. The previous run must join before a fresh factory is
+called. Factory and validation failures are terminal.
 
-`ResubscribeErrorHandler` calls `sub.Unsubscribe()` and then attempts to subscribe again using the original handler and options. It is intended for backends where resubscribing is a meaningful recovery action (connection drop, consumer invalidation, etc).
-
-Notes:
-
-- it waits for `sub.Done()` before re-subscribing
-- it stops retrying on `broker.AlreadySubscribed`
-
-## AutoAck and manual ack
-
-When you disable AutoAck with `broker.DisableAutoAck()`, your handler must call `event.Ack()`. If you add idempotency and plan to skip replays, make sure replays get acknowledged too (see [idempotency/README.md](../idempotency/README.md)).
+Classify only failures for which another receiving generation is safe. Do not
+restart blindly after business failures, uncertain settlement or joined cleanup
+errors. Recovery does not replay callbacks itself, but the server may redeliver
+messages. Scheduled replacements retain their original errors in the configured
+logger. Terminal failure preserves all failed generation causes.

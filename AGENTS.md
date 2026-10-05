@@ -1,44 +1,51 @@
-# Repository Guidelines
+# Repository guidelines
 
-## Project Structure & Module Organization
+## Layout
 
-- Core library lives in the repo root (`package broker`) with unit tests alongside (`*_test.go`).
-- This repo is multi-module: each backend has its own `go.mod`/`go.sum` and should be developed/tested from that directory:
-  - `natsjs/` (JetStream, module path `github.com/velmie/broker/natsjs/v2`)
-  - `sqs/`, `sns/` (AWS backends)
-  - `azuresb/` (Azure Service Bus)
-  - `otelbroker/` (OpenTelemetry middleware)
-  - `idempotency/` (idempotent consumer middleware)
-- Generated mocks live in `mock/` (and some modules have their own `mock/`).
-- Runnable examples live in `_examples/` (e.g. `_examples/sqs-subscribe/`, `_examples/sns-publish/`).
-- Library documentation lives in `docs/`.
+- The root `broker` package is the transport-independent core and uses only the
+  standard library. Tests live beside source files.
+- `natsjs`, `sqs`, `sns` and `azuresb` are separate adapter modules. Each owns its
+  native SDK integration and fixtures.
+- `otelbroker` is an optional integration module.
+- Runnable commands live under module-owned `cmd` directories.
+  Traced commands and cross-module tests live under `otelbroker/examples`.
+- Core guides live in `docs`. Module READMEs own adapter-specific contracts.
 
-## Build, Test, and Development Commands
+## Build and verify
 
-- `go test ./...` - run tests for the current module (nested modules are not included from repo root).
-- `cd natsjs && go test -v -cover ./...` - CI-equivalent for JetStream; requires a running Docker daemon (`ory/dockertest`).
-- `golangci-lint run` - lint the current module using `.golangci.yml`.
-- `go generate ./...` - regenerate mocks (run per module).
-- Run all module tests:
-  - `for d in . natsjs otelbroker sns sqs azuresb idempotency; do (cd "$d" && go test ./...); done`
+Use the [development guide](docs/development.md) for local module composition.
+Run `go build ./...`, `go vet ./...`, `go test -race -count=1 ./...` and
+`golangci-lint run` from each affected module. Root commands do not include
+nested modules. Native transport tests require their documented fixtures.
+Use `GOWORK=off` for independent dependency resolution when the declared versions
+are available. Keep workspace files local.
 
-## Coding Style & Naming Conventions
+Format Go with `gofmt`, keep imports organized and follow `.golangci.yml`,
+including its line-length limit. Prefer deterministic tests and clean up owned
+external resources. Use meaningful behavior checks for API changes. Verify
+Markdown examples separately without adding repository tests just for the prose.
 
-- Format with `gofmt` (tabs) and keep imports tidy (`goimports`/`gci`, local prefix `github.com/velmie/broker`).
-- Keep lines <= 140 chars (see `.golangci.yml`).
-- Follow Go naming: exported `PascalCase`, unexported `camelCase`, packages/directories lowercase.
+## Documentation
 
-## Testing Guidelines
+Write shareable documentation in English for readers with no task history.
+Describe Broker as a messaging abstraction. Keep overviews focused on purpose,
+minimal use and navigation. Put detailed setup and transport contracts in their
+own guides, and compatibility changes in the migration guide.
 
-- Use Go's `testing` package; assertions commonly use `stretchr/testify`.
-- Prefer deterministic tests; integration tests should clean up external resources (notably Docker-based tests in `natsjs/`).
+Assume normal Go development knowledge. Include environment details only when
+needed to run or understand the example. Leave incidental directory choices to
+the reader. Keep versions in manifests and configurations unless an exact value
+is necessary for a documented procedure. Add brief comments where an example
+first introduces an unfamiliar API. Check code, relative links and expected
+results before finalizing documentation.
 
-## Commit & Pull Request Guidelines
+## Contributions and configuration
 
-- Commit messages follow Conventional Commits seen in history: `feat: ...`, `fix: ...`, `refactor(scope): ...`, `chore: ...` (scopes like `natsjs`, `otelbroker`).
-- PRs should include: clear description, linked issue (if any), tests for behavior changes, and updates to docs/examples when relevant.
-- Before opening a PR, run `golangci-lint` and the relevant module's `go test`.
+Use Conventional Commit messages describing the change, with an optional
+meaningful package scope. PR descriptions should explain the resulting behavior
+and relevant validation. Include an issue link only when one exists.
 
-## Configuration & Security Tips
-
-- Do not commit credentials. Examples under `_examples/` expect cloud credentials via standard SDK configuration (env/credentials files).
+Do not commit credentials, local absolute paths, transient diagnostics or private
+planning context. Examples receive credentials through native SDK configuration
+or environment variables. Preserve application ownership of topology and client
+lifetime, and retain diagnostic causes with redaction at the logging boundary.

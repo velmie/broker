@@ -2,79 +2,65 @@ package azuresb
 
 import (
 	"context"
-	"sync"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
-	"github.com/pkg/errors"
+	"errors"
+	"time"
 
 	"github.com/velmie/broker"
 )
 
-// ASBSender abstracts the methods of an Azure Service Bus sender
-type ASBSender interface {
-	SendMessage(ctx context.Context, msg *azservicebus.Message, opts *azservicebus.SendMessageOptions) error
-}
+const defaultPublisherOperationTimeout = 30 * time.Second
 
-// SenderFactory defines a factory interface for creating senders
-type SenderFactory interface {
-	// CreateSender returns a new ASBSender for the given topic
-	CreateSender(topic string) (ASBSender, error)
-}
-
-// Publisher implements the broker.Publisher interface for Azure Service Bus
+// Publisher borrows a destination-bound Sender. Concurrent publication requires
+// a concurrent-safe sender, as provided by the native Azure SDK. Input storage
+// is copied before entering the sender. The caller retains sender/client ownership.
 type Publisher struct {
-	senderFactory  SenderFactory
-	sendersByTopic sync.Map // map[string]ASBSender
+	sender Sender
+	config PublisherConfig
 }
 
-// NewPublisher creates a new Publisher using the provided SenderFactory
-func NewPublisher(factory SenderFactory) *Publisher {
-	return &Publisher{
-		senderFactory: factory,
+func NewPublisher(sender Sender, config PublisherConfig) (*Publisher, error) {
+	if err := validateSource(config.Source); err != nil {
+		return nil, err
 	}
+	if config.OperationTimeout == 0 {
+		config.OperationTimeout = defaultPublisherOperationTimeout
+	}
+	if config.OperationTimeout < 0 {
+		return nil, &FieldError{Field: operationTimeoutField, Cause: errors.New("must be positive")}
+	}
+	if config.Observer != nil {
+		snapshot := *config.Observer
+		config.Observer = &snapshot
+	}
+	return &Publisher{sender: sender, config: config}, nil
 }
 
-// Publish sends a message to the specified topic using Azure Service Bus
-func (p *Publisher) Publish(topic string, message *broker.Message) error {
-	broker.SetIDHeader(message)
-
-	value, ok := p.sendersByTopic.Load(topic)
-	var sender ASBSender
-	if ok {
-		sender = value.(ASBSender)
-	} else {
-		var err error
-		sender, err = p.senderFactory.CreateSender(topic)
-		if err != nil {
-			return errors.Wrapf(err, "azuresb: cannot create sender for topic %q", topic)
-		}
-		actual, loaded := p.sendersByTopic.LoadOrStore(topic, sender)
-		if loaded {
-			sender = actual.(ASBSender)
-		}
+// Publish requires an explicit nonempty logical ID so Service Bus cannot
+// synthesize an identity for this publication. Header values must be UTF-8 text.
+// Callers explicitly encode binary metadata as text because Service Bus rejects
+// native binary application properties. The body remains arbitrary bytes.
+// Publish returns nil when the native SDK accepted the send, not when a consumer
+// processed it. A failed or canceled native call may have an unknown outcome.
+// Original native/context errors remain available through errors.Is and errors.As.
+func (p *Publisher) Publish(ctx context.Context, message broker.Message) (err error) {
+	start := time.Now()
+	operation, outcome := OperationMetadata, OutcomeFailed
+	observer := observation{observer: p.config.Observer}
+	defer func() {
+		observer.record(ctx, p.config.Source, operation, outcome, start, err, nil)
+		err = errors.Join(err, observer.err)
+	}()
+	native, err := encodeMessage(message)
+	if err != nil {
+		return operationError(p.config.Source, operation, err)
 	}
-
-	asbMsg := &azservicebus.Message{
-		Body:                  message.Body,
-		MessageID:             &message.ID,
-		ApplicationProperties: stringMapToAnyMap(message.Header),
+	callCtx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+	defer cancel()
+	operation, outcome = OperationPublish, OutcomeAccepted
+	err = p.sender.SendMessage(callCtx, native, nil)
+	if err != nil {
+		outcome = OutcomeUnknown
+		err = operationError(p.config.Source, operation, err)
 	}
-
-	ctx := message.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	if err := sender.SendMessage(ctx, asbMsg, nil); err != nil {
-		return errors.Wrap(err, "azuresb: cannot send message")
-	}
-	return nil
-}
-
-func stringMapToAnyMap(in map[string]string) map[string]any {
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
+	return err
 }
