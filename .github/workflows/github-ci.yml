@@ -105,16 +105,19 @@ jobs:
           trap 'rm -rf "$workspace_dir"' EXIT
           (
             cd "$workspace_dir"
-            go work init "$repository_dir" "$repository_dir/natsjs" "$repository_dir/sqs" "$repository_dir/sns" "$repository_dir/azuresb" "$repository_dir/otelbroker"
+            go work init "$repository_dir" "$repository_dir/natsjs" "$repository_dir/sqs" \
+              "$repository_dir/sns" "$repository_dir/azuresb" "$repository_dir/otelbroker" \
+              "$repository_dir/idempotency" "$repository_dir/idempotency/examples"
             # Compose the checked-out module versions for source-level integration.
             GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker@v1.0.0=$repository_dir"
             GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/natsjs/v3@v3.0.0=$repository_dir/natsjs"
             GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/sqs@v1.0.0=$repository_dir/sqs"
             GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/sns@v1.0.0=$repository_dir/sns"
             GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/azuresb@v1.0.0=$repository_dir/azuresb"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/idempotency@v1.0.0=$repository_dir/idempotency"
           )
           export GOWORK="$workspace_dir/go.work"
-          for module in . natsjs sqs sns azuresb otelbroker; do
+          for module in . natsjs sqs sns azuresb idempotency otelbroker idempotency/examples; do
             (
               cd "$module"
               go build ./...

@@ -6,9 +6,11 @@
   standard library. Tests live beside source files.
 - `natsjs`, `sqs`, `sns` and `azuresb` are separate adapter modules. Each owns its
   native SDK integration and fixtures.
-- `otelbroker` is an optional integration module.
+- `idempotency` and `otelbroker` are optional integration modules.
 - Runnable commands live under module-owned `cmd` directories.
-  Traced commands and cross-module tests live under `otelbroker/examples`.
+  `idempotency/examples` isolates the NATS command and its tests from the
+  middleware library. Traced commands and cross-module tests live under
+  `otelbroker/examples`.
 - Core guides live in `docs`. Module READMEs own adapter-specific contracts.
 
 ## Build and verify

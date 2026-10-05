@@ -68,5 +68,6 @@ application ID convention. Wrappers must copy caller-owned storage before
 changing it. Header rules are described in [message headers](headers.md).
 
 [OpenTelemetry](../otelbroker/README.md) supplies processing and publication
-wrappers. Place wrappers deliberately: an outer logger or span observes only
+wrappers. [Idempotency](../idempotency/README.md) supplies completion-marker
+middleware. Place wrappers deliberately: an outer logger or span observes only
 failures returned by the wrappers inside it.

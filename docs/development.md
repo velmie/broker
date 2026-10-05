@@ -11,13 +11,15 @@ Use a Go workspace to compose checked-out modules without changing their
 manifests. From the repository root, with no existing `go.work`:
 
 ```sh
-go work init . ./natsjs ./sqs ./sns ./azuresb ./otelbroker
+go work init . ./natsjs ./sqs ./sns ./azuresb ./idempotency ./otelbroker \
+  ./idempotency/examples
 go work edit \
   -replace=github.com/velmie/broker@v1.0.0=. \
   -replace=github.com/velmie/broker/natsjs/v3@v3.0.0=./natsjs \
   -replace=github.com/velmie/broker/sqs@v1.0.0=./sqs \
   -replace=github.com/velmie/broker/sns@v1.0.0=./sns \
   -replace=github.com/velmie/broker/azuresb@v1.0.0=./azuresb \
+  -replace=github.com/velmie/broker/idempotency@v1.0.0=./idempotency \
   -replace=github.com/velmie/broker/otelbroker@v1.0.0=./otelbroker
 ```
 
@@ -63,6 +65,8 @@ disposable resources or explicitly dedicated entities:
 | Native JetStream features | [Caller-owned sessions](../natsjs/cmd/native/README.md) |
 | Visibility and redelivery | [SQS with ElasticMQ](../sqs/README.md#run-the-example) |
 | Raw and notification forwarding | [SNS/SQS with Moto](../sns/README.md#run-the-example) |
+| Completion-marker replay | [In-memory idempotency](../idempotency/README.md#run-the-example) |
+| Replay after native redelivery | [Idempotency with NATS](../idempotency/examples/README.md) |
 | Queue or subscription processing | [Azure Service Bus](../azuresb/readme.md#run-the-example) |
 | Tracing and native observations | [OpenTelemetry examples](../otelbroker/examples/README.md) |
 

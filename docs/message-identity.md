@@ -45,6 +45,8 @@ neither generates an ID nor fills a missing header.
 Transport delivery attempts count deliveries in an adapter-defined scope, not
 business executions. `AttemptReader` may report `Known: false`.
 
-Application effects and acknowledgment are separate operations. Use stable
-identities and an application duplicate-processing policy where repeated
-effects matter.
+[Idempotency middleware](../idempotency/README.md) can skip an effect after a
+successful completion marker has been stored. Its key namespace and fingerprint
+must remain stable while retained records are in use. Application effects,
+marker persistence and acknowledgment are separate operations, so a crash between
+them can still require business-level idempotency or transactional coordination.

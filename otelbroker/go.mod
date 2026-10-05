@@ -14,9 +14,11 @@ require (
 	github.com/nats-io/nuid v1.0.1
 	github.com/velmie/broker v1.0.0
 	github.com/velmie/broker/azuresb v1.0.0
+	github.com/velmie/broker/idempotency v1.0.0
 	github.com/velmie/broker/natsjs/v3 v3.0.0
 	github.com/velmie/broker/sns v1.0.0
 	github.com/velmie/broker/sqs v1.0.0
+	github.com/velmie/idempo v0.2.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0

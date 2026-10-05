@@ -1,10 +1,8 @@
 module github.com/velmie/broker/idempotency
 
-go 1.21
+go 1.26.0
 
 require (
-	github.com/velmie/broker v0.8.1
-	github.com/velmie/idempo v0.1.0
+	github.com/velmie/broker v1.0.0
+	github.com/velmie/idempo v0.2.0
 )
-
-require github.com/pkg/errors v0.9.1 // indirect

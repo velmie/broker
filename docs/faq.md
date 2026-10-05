@@ -29,7 +29,8 @@ redelivery policy. Server redelivery after expiry or restart is a separate event
 ## Who supplies message IDs?
 
 The application supplies stable logical IDs. Broker does not generate them or
-promise exactly-once business execution. See [identity](message-identity.md).
+promise exactly-once business execution. See [identity](message-identity.md) and
+[idempotency](../idempotency/README.md).
 
 ## How do middleware and shutdown compose?
 

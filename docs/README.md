@@ -16,6 +16,6 @@ then [connect an application](getting-started.md) to a transport adapter.
 | Upgrading an existing application | [Migration](migration.md) |
 | Building and running this repository | [Development](development.md) |
 
-Optional [OpenTelemetry](../otelbroker/README.md) middleware instruments
-processing and publication. Each [adapter guide](../readme.md#modules)
+Optional modules provide [idempotency](../idempotency/README.md) and
+[OpenTelemetry](../otelbroker/README.md). Each [adapter guide](../readme.md#modules)
 describes its configuration, delivery guarantees and executable examples.

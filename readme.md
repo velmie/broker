@@ -8,8 +8,8 @@ Adapters connect these contracts to a messaging system and handle delivery,
 acknowledgments and renewal. Use a supplied adapter or implement one for another
 transport.
 
-The core uses only the standard library. Transport adapters and OpenTelemetry
-are separate modules, so applications can choose what they need.
+The core uses only the standard library. Transport adapters, OpenTelemetry and
+idempotency are separate modules, so applications can choose what they need.
 
 ## Publish and handle a message
 
@@ -106,7 +106,8 @@ Add policies where the application needs them:
   your classifier. Choose errors that are safe to retry after partial work.
 - `Handler.WithMiddleware` and `WrapPublisher` compose processing and publication
   wrappers. In `a, b` order, `a` is outermost.
-- [OpenTelemetry](otelbroker/README.md) traces processing and publication.
+- [Idempotency](idempotency/README.md) skips repeated processing after a recorded
+  success. [OpenTelemetry](otelbroker/README.md) traces processing and publication.
 
 An unhandled error stops the consumer after its active work joins. Successful
 processing and a confirmed acknowledgment are separate outcomes. Messages can
@@ -122,6 +123,7 @@ be redelivered, so application effects must tolerate duplicates.
 | [`sns`](sns/README.md) | Amazon SNS publication and notification decoding |
 | [`azuresb`](azuresb/readme.md) | Azure Service Bus queues and subscriptions |
 | [`otelbroker`](otelbroker/README.md) | OpenTelemetry processing and publication spans |
+| [`idempotency`](idempotency/README.md) | Completion markers and replay handling with `idempo` |
 
 Module paths below the root use the `github.com/velmie/broker/` prefix. Each guide
 covers its dependencies, configuration, delivery guarantees and runnable examples.

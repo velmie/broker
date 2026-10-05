@@ -60,7 +60,7 @@ Business effects, reply publication and request acknowledgment are separate
 steps. If publication fails after an effect, the request remains unsettled. If
 acknowledgment fails after publication, the response may already be available.
 Redelivery can repeat both effects and replies. Stable identities and
-[idempotent application effects](message-identity.md#duplicate-processing) remain
+[idempotent application effects](../idempotency/README.md#delivery-limits) remain
 necessary where duplicates matter.
 
 `WithRedelivery` classifies business callback failures only. It does not classify
