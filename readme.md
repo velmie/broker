@@ -113,6 +113,14 @@ An unhandled error stops the consumer after its active work joins. Successful
 processing and a confirmed acknowledgment are separate outcomes. Messages can
 be redelivered, so application effects must tolerate duplicates.
 
+## Diagnostics
+
+`LogProcessing` records callback failures through `slog`. Use `DescribeError` at
+your logger's serialization boundary to retain error types, causes, stages and
+fields without arbitrary error text. Application and adapter describers add safe
+details for their own errors. Your logging adapter owns redaction of
+application-specific data. See the [configured logger](natsjs/cmd/native/diagnostics.go).
+
 ## Modules
 
 | Module | Use it for |

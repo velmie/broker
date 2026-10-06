@@ -59,10 +59,10 @@ func (c *Coordinator) Run(parent context.Context) error {
 	for i, entry := range entries {
 		consumer, err := entry.factory()
 		if err != nil {
-			return fmt.Errorf("%s factory: %w", entry.name, err)
+			return &RegistrationError{Name: entry.name, Operation: "factory", Cause: err}
 		}
 		if err = consumer.Validate(entry.handler.Requirements()...); err != nil {
-			return fmt.Errorf("%s validate: %w", entry.name, err)
+			return &RegistrationError{Name: entry.name, Operation: "validate", Cause: err}
 		}
 		consumers[i] = consumer
 	}
@@ -73,7 +73,7 @@ func (c *Coordinator) Run(parent context.Context) error {
 		go func(consumer Consumer, entry registration) {
 			err := consumer.Run(ctx, entry.handler)
 			if err != nil {
-				err = fmt.Errorf("%s run: %w", entry.name, err)
+				err = &RegistrationError{Name: entry.name, Operation: "run", Cause: err}
 				cancel()
 			}
 			results <- err

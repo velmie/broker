@@ -239,27 +239,29 @@ func (r *consumerRun) validateResult(
 		return OperationAck, nil
 	case broker.RetryAfter:
 		if !required.redelivery {
-			return OperationNak, errors.New("RedeliveryRequirement: undeclared")
+			return OperationNak, fieldFailure("RedeliveryRequirement", "undeclared", errors.New("RedeliveryRequirement: undeclared"))
 		}
 		if value.Delay < 0 {
-			return OperationNak, errors.New("RetryAfter.Delay: negative")
+			return OperationNak, fieldFailure("RetryAfter.Delay", "must_not_be_negative", errors.New("RetryAfter.Delay: negative"))
 		}
 		// The server stores pending timestamps in signed Unix nanoseconds. Leave
 		// the finite request budget before that representation's upper boundary.
 		if value.Delay > 0 && value.Delay > time.Until(time.Unix(0, math.MaxInt64))-r.consumer.config.OperationTimeout {
-			return OperationNak, errors.New("RetryAfter.Delay: exceeds server timestamp range")
+			return OperationNak, fieldFailure("RetryAfter.Delay", "exceeds_timestamp_range",
+				errors.New("RetryAfter.Delay: exceeds server timestamp range"),
+			)
 		}
 		if maxDeliver > 0 && delivery.metadata.NumDelivered >= uint64(maxDeliver) {
-			return OperationNak, errors.New("RetryAfter: Consumer.MaxDeliver exhausted")
+			return OperationNak, fieldFailure("Consumer.MaxDeliver", "exhausted", errors.New("RetryAfter: Consumer.MaxDeliver exhausted"))
 		}
 		return OperationNak, nil
 	case Terminate:
 		if !required.termination {
-			return OperationTerm, errors.New("TerminationRequirement: undeclared")
+			return OperationTerm, fieldFailure("TerminationRequirement", "undeclared", errors.New("TerminationRequirement: undeclared"))
 		}
 		return OperationTerm, nil
 	default:
-		return OperationDisposition, fmt.Errorf("unsupported disposition %T", result)
+		return OperationDisposition, fieldFailure("Disposition", "unsupported_disposition", fmt.Errorf("unsupported disposition %T", result))
 	}
 }
 

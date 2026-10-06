@@ -33,14 +33,47 @@ source and duration. Successful callbacks are silent by default. It records
 processing outcomes; adapter observers report later acknowledgment, renewal or
 publication outcomes.
 
-At serialization, inspect the original error tree and retain its operations,
-stages, affected fields and safe native codes. Redact application-specific
-data before output. Bound untrusted fields and keep independent cleanup
-causes visible. Do not serialize bodies, credentials or arbitrary SDK text.
+Use `DescribeError` at the logger's serialization boundary. For example:
 
-Log a failure once at the boundary that can explain its outcome, with
-appropriate severity. A `slog` handler must report its own sink failures
-because the logger does not return them.
+```go
+package logging
+
+import (
+	"io"
+	"log/slog"
+
+	"github.com/velmie/broker"
+)
+
+func NewLogger(output io.Writer, describe ...func(error) map[string]any) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{
+		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
+			if err, ok := attr.Value.Any().(error); ok {
+				return slog.Any(attr.Key, broker.DescribeError(err, describe...))
+			}
+			return attr
+		},
+	}))
+}
+```
+
+The projector retains error types, cause relationships and known Broker or
+standard-library fields, including JSON field/type failures. It bounds depth,
+node count and scalar values. It omits arbitrary error text, bodies, headers,
+addresses and panic values.
+
+Supply application describers for approved business details and adapter
+describers for native codes. Each describer inspects one original node. The first
+non-nil field map wins; traversal of its causes continues. For NATS, pass
+`natsjs.ErrorFields` after any application-specific describer. The
+[native command logger](../natsjs/cmd/native/diagnostics.go) shows this composition.
+
+Bounds prevent oversized records, not disclosure of sensitive values. The
+logging adapter still owns redaction of custom fields, other attributes and
+application-specific errors. Preserve the affected operation, field or safe
+entity identifier. Log a failure once at the boundary that can explain its
+outcome, with severity appropriate to that outcome. A `slog` handler must report
+its own sink failures because the logger does not return them.
 
 ## Consumer recovery
 

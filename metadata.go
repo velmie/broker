@@ -15,10 +15,10 @@ func singleTextHeader(headers []Header, name string) (value string, found bool, 
 			continue
 		}
 		if found {
-			return "", false, fmt.Errorf("%s: duplicate header", name)
+			return "", false, &FieldError{Field: name, Reason: "duplicate_header", Cause: fmt.Errorf("%s: duplicate header", name)}
 		}
 		if !utf8.Valid(header.Value) {
-			return "", false, fmt.Errorf("%s: invalid UTF-8", name)
+			return "", false, &FieldError{Field: name, Reason: "invalid_utf8", Cause: fmt.Errorf("%s: invalid UTF-8", name)}
 		}
 		value, found = string(header.Value), true
 	}

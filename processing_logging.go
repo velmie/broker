@@ -97,7 +97,7 @@ func processingStage(err error) string {
 		case *DecodeError:
 			return StageDecode
 		case *PanicError:
-			return "panic"
+			return stagePanic
 		}
 		err = errors.Unwrap(err)
 	}

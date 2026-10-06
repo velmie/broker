@@ -59,10 +59,10 @@ func detach(message *nats.Msg, source string) (*delivery, error) {
 			value.Headers = append(value.Headers, broker.Header{Name: key, Value: []byte(header)})
 			if strings.EqualFold(key, nats.MsgIdHdr) {
 				if foundID {
-					return nil, errors.New("Nats-Msg-Id: duplicate or case-aliased header")
+					return nil, fieldFailure("Nats-Msg-Id", "ambiguous_header", errors.New("Nats-Msg-Id: duplicate or case-aliased header"))
 				}
 				if !utf8.ValidString(header) {
-					return nil, errors.New("Nats-Msg-Id: invalid UTF-8")
+					return nil, fieldFailure("Nats-Msg-Id", "invalid_utf8", errors.New("Nats-Msg-Id: invalid UTF-8"))
 				}
 				value.ID, foundID = header, true
 			}

@@ -157,33 +157,33 @@ func (c *Consumer) validateConfig() error {
 	}
 	for _, field := range []struct{ name, value string }{{"Stream", c.config.Stream}, {"Consumer", c.config.Consumer}} {
 		if field.value == "" || strings.ContainsAny(field.value, ".*>/\\ \t\r\n") {
-			return fmt.Errorf("%s: invalid name", field.name)
+			return fieldFailure(field.name, "invalid_name", fmt.Errorf("%s: invalid name", field.name))
 		}
 	}
 	if !validSubject(c.config.Subject, true) {
-		return errors.New("consumer Subject: invalid filter")
+		return fieldFailure("Subject", "invalid_filter", errors.New("consumer Subject: invalid filter"))
 	}
 	if c.config.BatchSize < 1 {
-		return errors.New("BatchSize: must be positive")
+		return fieldFailure("BatchSize", "must_be_positive", errors.New("BatchSize: must be positive"))
 	}
 	if c.config.FetchTimeout <= 0 {
-		return errors.New("FetchTimeout: must be positive")
+		return fieldFailure("FetchTimeout", "must_be_positive", errors.New("FetchTimeout: must be positive"))
 	}
 	if c.config.OperationTimeout <= 0 {
-		return errors.New("OperationTimeout: must be positive")
+		return fieldFailure("OperationTimeout", "must_be_positive", errors.New("OperationTimeout: must be positive"))
 	}
 	if c.conn.Opts.FlusherTimeout <= 0 {
-		return errors.New("connection FlusherTimeout: must be positive")
+		return fieldFailure("FlusherTimeout", "must_be_positive", errors.New("connection FlusherTimeout: must be positive"))
 	}
 	policy := c.config.Shutdown
 	if policy.Mode != broker.ShutdownGraceful && policy.Mode != broker.ShutdownCancel {
-		return errors.New("Shutdown.Mode: unsupported")
+		return fieldFailure("Shutdown.Mode", "unsupported", errors.New("Shutdown.Mode: unsupported"))
 	}
 	if policy.GracePeriod < 0 {
-		return errors.New("Shutdown.GracePeriod: must not be negative")
+		return fieldFailure("Shutdown.GracePeriod", "must_not_be_negative", errors.New("Shutdown.GracePeriod: must not be negative"))
 	}
 	if policy.Mode == broker.ShutdownCancel && policy.GracePeriod != 0 {
-		return errors.New("Shutdown.GracePeriod: invalid in cancel mode")
+		return fieldFailure("Shutdown.GracePeriod", "invalid_in_cancel_mode", errors.New("Shutdown.GracePeriod: invalid in cancel mode"))
 	}
 	return nil
 }
@@ -199,14 +199,18 @@ func parseRequirements(values []broker.Requirement) (requirements, error) {
 			result.termination = true
 		case broker.KeepAliveRequirement:
 			if value.Interval <= 0 {
-				return result, fmt.Errorf("KeepAliveRequirement.Interval: must be positive, got %s", value.Interval)
+				return result, fieldFailure("KeepAliveRequirement.Interval", "must_be_positive",
+					fmt.Errorf("KeepAliveRequirement.Interval: must be positive, got %s", value.Interval),
+				)
 			}
 			if result.keepAlive != 0 && result.keepAlive != value.Interval {
-				return result, fmt.Errorf("KeepAliveRequirement.Interval: conflicting %s and %s", result.keepAlive, value.Interval)
+				return result, fieldFailure("KeepAliveRequirement.Interval", "conflicting_intervals",
+					fmt.Errorf("KeepAliveRequirement.Interval: conflicting %s and %s", result.keepAlive, value.Interval),
+				)
 			}
 			result.keepAlive = value.Interval
 		default:
-			return result, fmt.Errorf("unsupported requirement %T", value)
+			return result, fieldFailure("Requirements", "unsupported_requirement", fmt.Errorf("unsupported requirement %T", value))
 		}
 	}
 	return result, nil
@@ -232,22 +236,30 @@ func (c *Consumer) subscribe(parent context.Context, required requirements) (*na
 	}
 	remote := info.Config
 	if remote.Durable != c.config.Consumer || remote.DeliverSubject != "" || remote.AckPolicy != nats.AckExplicitPolicy {
-		return nil, remote, errors.New("Consumer: requires an existing durable explicit-ack pull consumer")
+		return nil, remote, fieldFailure("Consumer", "incompatible_consumer",
+			errors.New("Consumer: requires an existing durable explicit-ack pull consumer"),
+		)
 	}
 	if remote.FilterSubject != c.config.Subject || len(remote.FilterSubjects) != 0 {
-		return nil, remote, errors.New("consumer Subject: must equal the consumer's single FilterSubject")
+		return nil, remote, fieldFailure("Subject", "filter_mismatch",
+			errors.New("consumer Subject: must equal the consumer's single FilterSubject"),
+		)
 	}
 	if len(remote.BackOff) != 0 {
-		return nil, remote, errors.New("Consumer.BackOff: unsupported in this profile")
+		return nil, remote, fieldFailure("Consumer.BackOff", "unsupported", errors.New("Consumer.BackOff: unsupported in this profile"))
 	}
 	if remote.MaxRequestBatch > 0 && c.config.BatchSize > remote.MaxRequestBatch {
-		return nil, remote, errors.New("BatchSize: exceeds Consumer.MaxRequestBatch")
+		return nil, remote, fieldFailure("BatchSize", "exceeds_max_request_batch", errors.New("BatchSize: exceeds Consumer.MaxRequestBatch"))
 	}
 	if remote.MaxRequestExpires > 0 && c.config.FetchTimeout > remote.MaxRequestExpires {
-		return nil, remote, errors.New("FetchTimeout: exceeds Consumer.MaxRequestExpires")
+		return nil, remote, fieldFailure("FetchTimeout", "exceeds_max_request_expires",
+			errors.New("FetchTimeout: exceeds Consumer.MaxRequestExpires"),
+		)
 	}
 	if required.keepAlive != 0 && required.keepAlive >= remote.AckWait {
-		return nil, remote, errors.New("KeepAliveRequirement.Interval: must be shorter than Consumer.AckWait")
+		return nil, remote, fieldFailure("KeepAliveRequirement.Interval", "exceeds_ack_wait",
+			errors.New("KeepAliveRequirement.Interval: must be shorter than Consumer.AckWait"),
+		)
 	}
 	// ConsumerInfo performed the remote check. Avoid a subscription-lifetime
 	// context and its SDK goroutine. This binding neither creates nor deletes
@@ -278,16 +290,18 @@ func validSubject(subject string, filter bool) bool {
 
 func (c *Consumer) validateNamespace() error {
 	if c.config.Domain != "" && c.config.APIPrefix != "" {
-		return errors.New("consumer Domain and APIPrefix: select at most one namespace")
+		return fieldFailure("Domain/APIPrefix", "conflicting_namespaces",
+			errors.New("consumer Domain and APIPrefix: select at most one namespace"),
+		)
 	}
 	if domain := c.config.Domain; domain != "" {
 		if strings.ContainsAny(domain, ".*>") || !validNamespaceSubject(domain) {
-			return errors.New("consumer Domain: invalid namespace name")
+			return fieldFailure("Domain", "invalid_namespace", errors.New("consumer Domain: invalid namespace name"))
 		}
 	}
 	if prefix := c.config.APIPrefix; prefix != "" {
 		if !validNamespaceSubject(strings.TrimSuffix(prefix, ".")) {
-			return errors.New("consumer APIPrefix: invalid namespace subject")
+			return fieldFailure("APIPrefix", "invalid_namespace", errors.New("consumer APIPrefix: invalid namespace subject"))
 		}
 	}
 	return nil

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"net/textproto"
 	"strings"
 	"time"
@@ -32,20 +31,20 @@ type PublisherConfig struct {
 
 func NewPublisher(conn *nats.Conn, config PublisherConfig) (*Publisher, error) {
 	if !validSubject(config.Subject, false) {
-		return nil, errors.New("publish Subject: invalid destination")
+		return nil, fieldFailure("Subject", "invalid_destination", errors.New("publish Subject: invalid destination"))
 	}
 	if config.OperationTimeout == 0 {
 		config.OperationTimeout = defaultOperationTimeout
 	}
 	if config.OperationTimeout <= 0 {
-		return nil, errors.New("publish OperationTimeout: must be positive")
+		return nil, fieldFailure("OperationTimeout", "must_be_positive", errors.New("publish OperationTimeout: must be positive"))
 	}
 	if conn.Opts.FlusherTimeout <= 0 {
-		return nil, errors.New("publish connection FlusherTimeout: must be positive")
+		return nil, fieldFailure("FlusherTimeout", "must_be_positive", errors.New("publish connection FlusherTimeout: must be positive"))
 	}
 	js, err := conn.JetStream(nats.MaxWait(config.OperationTimeout))
 	if err != nil {
-		return nil, fmt.Errorf("publish configure: %w", err)
+		return nil, &OperationError{Source: config.Subject, Operation: "configure", Cause: err}
 	}
 	return &Publisher{js: js, config: config}, nil
 }
@@ -72,7 +71,7 @@ func (p *Publisher) failure(err error) error {
 	if err == nil {
 		return nil
 	}
-	return &broker.StageError{Stage: broker.StagePublish, Cause: fmt.Errorf("nats subject %q: %w", p.config.Subject, err)}
+	return &broker.StageError{Stage: broker.StagePublish, Cause: &OperationError{Source: p.config.Subject, Operation: "publish", Cause: err}}
 }
 
 func publishHeaders(message broker.Message) (nats.Header, error) {
@@ -80,21 +79,23 @@ func publishHeaders(message broker.Message) (nats.Header, error) {
 	var foundID bool
 	for _, header := range message.Headers {
 		if !validHeaderName(header.Name) {
-			return nil, errors.New("Headers.Name: invalid NATS header name")
+			return nil, fieldFailure("Headers.Name", "invalid_header_name", errors.New("Headers.Name: invalid NATS header name"))
 		}
 		value := string(header.Value)
 		if bytes.ContainsAny(header.Value, "\r\n") || textproto.TrimString(value) != value {
-			return nil, errors.New("Headers.Value: CR/LF or boundary whitespace cannot be preserved")
+			return nil, fieldFailure("Headers.Value", "unrepresentable_header_value",
+				errors.New("Headers.Value: CR/LF or boundary whitespace cannot be preserved"),
+			)
 		}
 		if strings.EqualFold(header.Name, nats.MsgIdHdr) {
 			if foundID || header.Name != nats.MsgIdHdr {
-				return nil, errors.New("Nats-Msg-Id: duplicate or noncanonical header")
+				return nil, fieldFailure("Nats-Msg-Id", "ambiguous_header", errors.New("Nats-Msg-Id: duplicate or noncanonical header"))
 			}
 			if !utf8.ValidString(value) {
-				return nil, errors.New("Nats-Msg-Id: invalid UTF-8")
+				return nil, fieldFailure("Nats-Msg-Id", "invalid_utf8", errors.New("Nats-Msg-Id: invalid UTF-8"))
 			}
 			if message.ID != "" && message.ID != value {
-				return nil, errors.New("Nats-Msg-Id: conflicts with Message.ID")
+				return nil, fieldFailure("Nats-Msg-Id", "conflicting_message_id", errors.New("Nats-Msg-Id: conflicts with Message.ID"))
 			}
 			foundID = true
 		}
@@ -102,7 +103,7 @@ func publishHeaders(message broker.Message) (nats.Header, error) {
 	}
 	if message.ID != "" && !foundID {
 		if !utf8.ValidString(message.ID) || strings.ContainsAny(message.ID, "\r\n") || textproto.TrimString(message.ID) != message.ID {
-			return nil, errors.New("Message.ID: not representable as Nats-Msg-Id")
+			return nil, fieldFailure("Message.ID", "unrepresentable_message_id", errors.New("Message.ID: not representable as Nats-Msg-Id"))
 		}
 		headers[nats.MsgIdHdr] = []string{message.ID}
 	}

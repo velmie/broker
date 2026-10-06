@@ -1,6 +1,10 @@
 package natsjs
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/velmie/broker"
+)
 
 // OperationError identifies a failed native binding operation. It preserves its
 // original cause for diagnostics and application-owned recovery classification.
@@ -18,3 +22,7 @@ func (e *OperationError) Error() string {
 }
 
 func (e *OperationError) Unwrap() error { return e.Cause }
+
+func fieldFailure(field, reason string, cause error) error {
+	return &broker.FieldError{Field: field, Reason: reason, Cause: cause}
+}

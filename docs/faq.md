@@ -42,6 +42,6 @@ shutdown policies control how admitted callbacks receive cancellation. See
 ## Where should transport diagnostics go?
 
 Use the existing structured logger. `LogProcessing` records handler outcomes;
-adapter observers report native operations. Preserve original causes and
-affected fields through application-aware redaction at serialization time. See
+adapter observers report native operations. `DescribeError` retains structured
+causes at serialization time, with application-specific redaction. See
 [error handling](error-handling.md).

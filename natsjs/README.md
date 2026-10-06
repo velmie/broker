@@ -113,8 +113,9 @@ return promptly. A panic disables later hooks for that run; already entered
 hooks still join and their failures remain visible.
 
 `OperationError` and `FieldError` preserve original causes. Pass errors to your
-logging adapter, retaining native codes and safe operation context.
-Application errors need application-aware redaction. See [structured diagnostics](../docs/error-handling.md#structured-diagnostics).
+logging adapter and use `broker.DescribeError` with `natsjs.ErrorFields` to retain
+native codes and safe operation context. Application errors still need
+application-aware redaction. See [structured diagnostics](../docs/error-handling.md#structured-diagnostics).
 
 ## Run the example
 

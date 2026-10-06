@@ -98,8 +98,9 @@ Check native delay precision and mode restrictions. A classifier must account
 for partial business effects.
 
 Use `RecoverPanics`, `LogProcessing` and adapter observers at their owning
-boundaries. Supply original errors to the logger. Preserve
-structured causes and useful fields through application-aware redaction. See [error handling](error-handling.md).
+boundaries. Supply original errors to the logger. `DescribeError` preserves
+structured cause trees; application describers and redaction retain the useful
+fields that the library cannot infer. See [error handling](error-handling.md).
 
 `WithConsumerRecovery` replaces a run only after all its work joins. Classify the
 complete cause tree and bound replacements. Do not restart blindly after

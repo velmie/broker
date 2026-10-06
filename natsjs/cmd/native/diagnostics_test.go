@@ -15,6 +15,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/velmie/broker"
+	adapter "github.com/velmie/broker/natsjs/v3"
 )
 
 func TestNativeDiagnosticsKeepBranchContextWithoutSecrets(t *testing.T) {
@@ -124,6 +125,31 @@ func TestNativeDiagnosticsKeepPolicyFieldAndProcessingStage(t *testing.T) {
 			for _, secret := range []string{"secret-handler", "private-content"} {
 				if strings.Contains(output.String(), secret) {
 					t.Errorf("sensitive cause serialized: %s", output.String())
+				}
+			}
+		})
+	}
+}
+
+func TestNativeDiagnosticsIdentifyValidationAndConnectionFailures(t *testing.T) {
+	_, invalid := adapter.NewPublisher(&nats.Conn{}, adapter.PublisherConfig{Subject: "invalid subject"})
+	cases := []struct {
+		name    string
+		failure error
+		fields  []string
+	}{
+		{"validation", invalid, []string{`"field":"Subject"`, `"reason":"invalid_destination"`}},
+		{"authorization", nats.ErrAuthorization, []string{`"reason":"authorization_violation"`}},
+		{"no servers", nats.ErrNoServers, []string{`"reason":"no_servers"`}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{ReplaceAttr: redactAttribute}))
+			logger.Error("failed", slog.Any("error", test.failure))
+			for _, field := range test.fields {
+				if !strings.Contains(output.String(), field) {
+					t.Errorf("missing %s: %s", field, output.String())
 				}
 			}
 		})
