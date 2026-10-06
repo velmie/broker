@@ -92,4 +92,6 @@ The application owns providers, processors and exporters. Join consumer work,
 then flush and shut down telemetry under a separate bounded context. Preserve
 export and shutdown failures.
 
-Runnable commands and cross-module tests live in [examples](examples/README.md).
+Runnable commands and cross-module tests live in the separate
+[examples module](examples/README.md). They do not add transport SDKs or
+idempotency dependencies to applications importing this library.

@@ -12,7 +12,7 @@ github.com/aws/aws-sdk-go-v2/service/sqs v1.52.0 h1:39EpbrAPFSOPYc9FVr2ki84cLB/9
 github.com/aws/aws-sdk-go-v2/service/sqs v1.52.0/go.mod h1:yErwLsJkArgQLSGWtLjjwlpvlLK4+c9h0jDZZVN02hw=
 github.com/aws/smithy-go v1.28.1 h1:R/nXH00c8qcfCzQVELtRw+eLQWtzv+VAIEFJ1/xxXlQ=
 github.com/aws/smithy-go v1.28.1/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
-github.com/velmie/broker v1.0.0 h1:5OgjjMaWgMSDT4/1CfAZNrPUTOd44TesMC88MvL8UAE=
+github.com/velmie/broker v1.0.0 h1:3YrGXlss26uTkvJdA/5kN/fR7Zc+wiBQMaoOCgsFXq4=
 github.com/velmie/broker v1.0.0/go.mod h1:ntjx4+ujXzohdaWZ3j1e+Ep9L1wdFaLKCcOtyu+F6UY=
-github.com/velmie/broker/sqs v1.0.0 h1:C8CU0snkekVKjCWd4auHX1vrYF40bor1oszh1CCkpnU=
+github.com/velmie/broker/sqs v1.0.0 h1:ITjkC/0NBnuELIkTKcMg6Cs7M8kBv3cBNV9+oIqotsQ=
 github.com/velmie/broker/sqs v1.0.0/go.mod h1:hXKwUW0C4h0uCAnJ1xQFXa5PK1eQby8bJDFv4B6bOZc=

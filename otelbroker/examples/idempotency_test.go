@@ -1,4 +1,4 @@
-package otelbroker_test
+package examples_test
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"github.com/velmie/idempo"
 	"github.com/velmie/idempo/memory"
 	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/velmie/broker"
@@ -76,4 +78,21 @@ func TestIdempotencyReplayRetainsProcessingSpansAndRequirements(t *testing.T) {
 			t.Fatal("invalid processing span")
 		}
 	}
+}
+
+type delivery struct{ message broker.Message }
+
+func (d delivery) Message() broker.Message { return d.message }
+func (delivery) Source() string            { return "orders" }
+
+func recording(t *testing.T) (*sdktrace.TracerProvider, *tracetest.SpanRecorder) {
+	t.Helper()
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	t.Cleanup(func() {
+		if err := provider.Shutdown(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	return provider, recorder
 }

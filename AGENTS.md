@@ -8,9 +8,9 @@
   native SDK integration and fixtures.
 - `idempotency` and `otelbroker` are optional integration modules.
 - Runnable commands live under module-owned `cmd` directories.
-  `idempotency/examples` isolates the NATS command and its tests from the
-  middleware library. Traced commands and cross-module tests live under
-  `otelbroker/examples`.
+  `idempotency/examples` and `otelbroker/examples` are separate modules for
+  transport examples and cross-module tests. Their dependencies stay out of the
+  middleware libraries.
 - Core guides live in `docs`. Module READMEs own adapter-specific contracts.
 
 ## Build and verify

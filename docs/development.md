@@ -12,7 +12,7 @@ manifests. From the repository root, with no existing `go.work`:
 
 ```sh
 go work init . ./natsjs ./sqs ./sns ./azuresb ./idempotency ./otelbroker \
-  ./idempotency/examples
+  ./idempotency/examples ./otelbroker/examples
 go work edit \
   -replace=github.com/velmie/broker@v1.0.0=. \
   -replace=github.com/velmie/broker/natsjs/v3@v3.0.0=./natsjs \
