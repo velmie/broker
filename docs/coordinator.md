@@ -1,62 +1,60 @@
-# Subscription Coordinator
+# Coordinate consumers
 
-`broker.SubscriptionCoordinator` is a small helper that manages a set of subscriptions as one unit.
-You register "what to subscribe to" once, then start everything with one call and stop everything with one call.
+`Coordinator` starts a group of consumers, requests peer shutdown when one run
+fails, and waits for every run to finish. It is single-use.
 
-## What problem it solves
-
-In a real service you usually subscribe to multiple topics. Without a coordinator you end up with scattered `Subscribe(...)` calls, duplicated error handling, and ad-hoc shutdown logic.
-
-The coordinator provides:
-
-- Register subscriptions in one place
-- Start them all with `SubscribeAll(ctx)`
-- Stop them all with `UnsubscribeAll()`
-- Keep names unique and fail fast on duplicates
-
-## How it works
-
-- You add named `SubscribeFunc` functions (or `SubscriptionEnvelope` structs).
-- `SubscribeAll(ctx)` runs them sequentially, stores successful `broker.Subscription`s, and returns on the first error.
-- `UnsubscribeAll()` tries to unsubscribe from everything it started (best effort).
-
-Important detail: `SubscribeAll` does not roll back already started subscriptions if a later subscription fails. If you want a clean startup failure, call `UnsubscribeAll()` after `SubscribeAll` returns an error.
-
-## Quick start
+This wiring function accepts an application-configured factory and handler:
 
 ```go
-coord := broker.NewSubscriptionCoordinator()
-coord.SetLogger(logger)
+package wiring
 
-if err := coord.AddSubscription(
-	"orders.created",
-	broker.CreateSubscribeFunc("orders.created", sub, handler),
-); err != nil {
-	// handle duplicate name
-}
+import (
+	"context"
 
-if err := coord.SubscribeAll(ctx); err != nil {
-	// handle startup error (first failure stops the loop)
-	coord.UnsubscribeAll()
-	return err
-}
-defer coord.UnsubscribeAll()
-```
+	"github.com/velmie/broker"
+)
 
-## Using SubscriptionEnvelope (factory style)
-
-If you build subscriptions in a factory, return `[]broker.SubscriptionEnvelope` and add them:
-
-```go
-for _, se := range factory.CreateSubscriptions() {
-	if err := coord.AddSubscriptionE(se); err != nil {
-		// handle duplicate name
+func Run(ctx context.Context, factory broker.ConsumerFactory, handler broker.Handler) error {
+	coordinator := broker.NewCoordinator()
+	if err := coordinator.Add("orders", factory, handler); err != nil {
+		return err
 	}
+	return coordinator.Run(ctx)
 }
 ```
 
-## Tips
+A factory binds a source locally and returns a consumer without opening receive
+resources or starting workers. Registration names must be unique and use letters,
+digits, dots, dashes or underscores. Native SDK clients belong to application
+wiring and must remain open until all consumers using them return.
 
-- Use stable names (usually the topic string) so logs are easy to search.
-- If your subscribe logic can block (network, backoff, readiness), put that logic inside your `SubscribeFunc` and honor `ctx.Done()`.
-- Use middleware chains at handler creation time, then keep coordinator wiring focused on subscription lifecycle.
+## Startup
+
+`Run` creates and validates every registered consumer before starting any run.
+Factory or local capability errors therefore prevent processing across the group.
+Each consumer checks its remote binding inside its own `Run`. There is no shared
+remote-readiness barrier: one source may already be processing when another
+reports a remote startup failure.
+
+A failed run cancels its peers. A successful finite source leaves peers running.
+The coordinator joins all results and preserves independent causes through
+`errors.Join`. `RegistrationError` identifies the registration and operation.
+
+## Shutdown
+
+Cancel the run context and wait for `Run` to return. Each consumer's
+`ShutdownPolicy` controls its admitted callback:
+
+| Policy | Behavior |
+| --- | --- |
+| Zero value / `ShutdownGraceful` | Stop admitting work and let the active callback finish |
+| Graceful with a positive `GracePeriod` | Request callback cancellation when the grace period expires |
+| `ShutdownCancel` | Request callback cancellation immediately; requires a zero grace period |
+
+Cancellation is cooperative. A grace period cannot terminate an unresponsive
+callback, SDK call or instrumentation hook. Renewal and cleanup still join before
+the consumer returns. Close borrowed clients and flush telemetry afterward.
+
+For explicitly classified transient run failures, wrap the factory with
+`WithConsumerRecovery`. Replacements are sequential and start only after the
+previous run has joined. See [recovery boundaries](error-handling.md#consumer-recovery).

@@ -1,97 +1,73 @@
-# Middleware
+# Compose middleware
 
-"broker" uses a simple functional middleware model:
+Processing middleware wraps a `HandlerFunc`. Publication middleware wraps a
+destination-bound `Publisher`. Both receive the explicit context and preserve
+the next operation's result unless their documented policy changes it.
 
-```go
-type Middleware func(broker.Handler) broker.Handler
-```
+`handler.WithMiddleware(a, b)` produces `a(b(handler))`. The first argument is
+outermost. `WrapPublisher(publisher, a, b)` uses the same order. A later call wraps
+the already composed value.
 
-Middleware runs around your handler and can add logging, tracing, idempotency, panic recovery, and other cross cutting behavior.
+## Processing policies
 
-## Built-in middleware (core module)
-
-- `broker.PanicRecoveryMiddleware()` converts panics into errors, so your error handler can handle them.
-- `broker.LoggingMiddleware(logger, opts...)` logs handler duration and outcome. Options can include headers and body (use carefully).
-- `broker.LoopbackPreventionMiddleware(instanceID, logger?)` skips messages that were published by the same instance. It relies on the "Instance-Id" header.
-
-Publisher side helper:
-
-- `broker.PublishWithInstanceID(instanceID)` is a `broker.PublisherMiddleware` that sets the "Instance-Id" header on every published message.
-
-## Loopback prevention use case
-
-Loopback prevention is useful when the same process both publishes and subscribes to the same topic (or to a topology where its own published messages can come back to it). Without a guard you can get:
-
-- accidental processing of your own "output" events
-- feedback loops (a consumer publishes an event that triggers itself again)
-- double work in multi-instance setups where each instance should only handle events from other instances
-
-Typical examples:
-
-- an instance publishes an "entity.updated" event after writing to a database, but it also subscribes to "entity.updated" to maintain a local cache. You want each instance to react to updates from other instances, not to its own writes.
-- a service bridges messages between topics and should not re-process messages it just forwarded.
-
-To enable it, make sure the publisher sets "Instance-Id" and the consumer checks it:
+Place logging around panic recovery and the typed handler:
 
 ```go
-pub = broker.PublishWithInstanceID(instanceID)(pub)
+package orders
 
-handler := broker.CreateHandler(
-	broker.DecoderFunc(json.Unmarshal),
-	consumeFn,
-	broker.LoopbackPreventionMiddleware(instanceID, logger),
+import (
+	"context"
+	"log/slog"
+	"time"
+
+	"github.com/velmie/broker"
 )
-```
 
-## Add-on middleware modules
-
-- `otelbroker.ConsumerMiddleware(...)` and `otelbroker.PublisherMiddleware(...)` propagate OpenTelemetry context and create spans.
-- `idempotency.Middleware(engine, ...)` makes consumers idempotent by skipping replays (see [idempotency/README.md](../idempotency/README.md)).
-
-## Example: consumer middleware chain
-
-```go
-mw := []broker.Middleware{
-	broker.PanicRecoveryMiddleware(),
-	broker.LoggingMiddleware(logger),
-	otelbroker.ConsumerMiddleware(),
-	broker.LoopbackPreventionMiddleware(instanceID, logger),
-	idempotency.Middleware(engine),
+type Order struct {
+	ID string `json:"id"`
 }
 
-handler := broker.CreateHandler(
-	broker.DecoderFunc(json.Unmarshal),
-	consumeFn,
-	mw...,
-)
+func NewHandler(
+	process func(context.Context, Order) error,
+	retryable func(error) bool,
+	logger *slog.Logger,
+) broker.Handler {
+	handler := broker.NewTypedHandler(broker.DecodeJSON[Order], process,
+		// Request native redelivery only for business failures accepted by this policy.
+		broker.WithRedelivery(time.Second, retryable),
+	)
+	return handler.WithMiddleware(
+		broker.LogProcessing(logger, broker.ProcessingLogConfig{}),
+		broker.RecoverPanics(),
+	)
+}
 ```
 
-Note: middlewares are applied in the order you pass them to `CreateHandler`, but the last middleware becomes the outermost wrapper. If ordering matters, write a small test to lock it down.
+The logger's handler must redact application-specific errors while retaining
+useful causes and fields. See [diagnostics](error-handling.md#structured-diagnostics).
 
-## Logging options
+| Helper | Behavior |
+| --- | --- |
+| `WithRedelivery` | Maps classified `StageHandle` failures to `RetryAfter`; never calls the business function again itself |
+| `WithKeepAlive` | Declares adapter-owned renewal before decoding starts |
+| `RecoverPanics` | Converts processing panics into errors that retain the panic evidence |
+| `LogProcessing` | Records failed processing and requested retries; successful callbacks are opt-in |
+| `SkipOwnMessages` | Skips the next callback for the configured `Instance-Id` |
 
-`LoggingMiddleware` is intentionally flexible so you can keep logs safe and useful:
+Options such as `WithRedelivery` and `WithKeepAlive` belong at handler
+construction. Middleware can also declare requirements. Consumers validate the
+whole requirement set before processing, including transport-specific limits.
+Pass the documented concrete value forms, such as `Handled{}` and
+`KeepAliveRequirement{...}`.
 
-```go
-mw := broker.LoggingMiddleware(
-	logger,
-	broker.WithLogError(true),
-	broker.WithLogHeader(true),
-	broker.WithLogBodyOnError(true),
-	broker.WithLogHeaderFunc(func(e broker.Event) string {
-		// redact secrets, drop noisy headers, etc.
-		return "redacted"
-	}),
-)
-```
+## Publication policies
 
-Prefer logging body only on errors, and consider truncation/redaction in `WithLogBodyFunc`.
+Use `WrapPublisher` before passing the publisher to `NewTypedPublisher`.
+`StampInstanceID` adds loop-prevention metadata, and `ValidateIDHeader` checks an
+application ID convention. Wrappers must copy caller-owned storage before
+changing it. Header rules are described in [message headers](headers.md).
 
-## Example: publisher middleware
-
-```go
-pub = broker.PublishWithInstanceID(instanceID)(pub)
-pub = otelbroker.PublisherMiddleware()(pub)
-```
-
-If you use loopback prevention, make sure the publisher sets "Instance-Id" (either manually or via `PublishWithInstanceID`).
+[OpenTelemetry](../otelbroker/README.md) supplies processing and publication
+wrappers. [Idempotency](../idempotency/README.md) supplies completion-marker
+middleware. Place wrappers deliberately: an outer logger or span observes only
+failures returned by the wrappers inside it.

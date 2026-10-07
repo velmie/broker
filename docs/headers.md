@@ -1,46 +1,54 @@
-# Headers
+# Message headers
 
-`broker.Header` is a `map[string]string` attached to every `broker.Message`. It is the main place for transport independent metadata like correlation, reply routing, and loopback prevention.
+`Message.Headers` is an ordered `[]Header`. Each header contains a name and a
+`[]byte` value. The core preserves case, duplicates and binary data. Adapters
+document restrictions imposed by their native representation.
 
-## Standard keys
-
-Core helpers live in `header.go`:
-
-- `Correlation-Id`: trace or correlate a flow across services.
-- `Instance-Id`: identifies the producer instance, used for loopback prevention.
-- `Reply-To`: topic or queue where a response should be published.
-- `Reply-Message-Id`: request message ID attached to a response.
-- `Created-At`: Unix timestamp as string.
-
-Use the typed helpers instead of raw strings:
+This function constructs application metadata without depending on a transport:
 
 ```go
-msg.Header.SetCorrelationID("corr-1")
-msg.Header.SetInstanceID(instanceID)
-msg.Header.SetReplyTo("reply.topic")
-msg.Header.SetReplyMessageID("req-123")
-msg.Header.SetCreatedAt(time.Now().Unix())
-```
+package orders
 
-## Message ID and the "id" header
+import "github.com/velmie/broker"
 
-`broker.Message.ID` should be a stable, deterministic identifier for the business operation. Several backends use it for dedupe or routing.
-
-`broker.SetIDHeader(msg)` copies `Message.ID` into `Header["id"]` when missing. Some backends rely on this to preserve IDs across transports (for example SQS message attributes).
-
-## Correlation ID into typed payloads
-
-If your decoded message type implements:
-
-```go
-type CorrelationIDAware interface {
-	SetCorrelationID(id string)
+func Metadata(id, correlationID string) broker.MessageMetadata {
+	return broker.MessageMetadata{
+		ID: id,
+		Headers: []broker.Header{
+			{Name: "Content-Type", Value: []byte("application/json")},
+			{Name: "Correlation-Id", Value: []byte(correlationID)},
+		},
+	}
 }
 ```
 
-`CreateHandler` sets the correlation ID from `Header["Correlation-Id"]` automatically.
+Headers carry application conventions, not universal transport configuration.
+Broker does not automatically add timestamps, correlation IDs or reply routes.
 
-## Security note
+## Text conventions
 
-Headers often get persisted or logged by brokers and middleware. Don't put secrets in headers. When using `LoggingMiddleware`, prefer logging body only on errors and redact headers via `WithLogHeaderFunc`.
+Core helpers that read a single text header match its name case-insensitively.
+Duplicate values, including differently cased aliases, and invalid UTF-8 fail
+before the operation they protect.
 
+| Helper | Convention |
+| --- | --- |
+| `WithCorrelationIDBinding` | After decoding, passes an optional `Correlation-Id` to a DTO implementing `SetCorrelationID(string)` |
+| `StampInstanceID` | Replaces `Instance-Id` on a detached copy of publication headers |
+| `SkipOwnMessages` | Requests `Handled` without calling the next handler when `Instance-Id` matches the configured instance |
+| `ValidateIDHeader(name)` | Checks that an optional text header agrees with `Message.ID`; does not add or require it |
+
+These values are sender-controlled. Correlation and loop prevention do not
+establish identity or authorization. Tracing and idempotency have their own
+documented rules for selecting headers.
+
+## Ownership
+
+Received message data is detached from the native delivery and may be retained.
+Publishing treats the message and all its slices as read-only until the call
+returns. A middleware that changes headers must copy the storage it changes.
+`NewDelivery` wraps existing application data without copying it, so avoid
+concurrent mutation while a handler uses that delivery.
+
+See [message identity](message-identity.md) for transport ID mapping and
+[migration](migration.md#preserve-message-contracts) for existing wire formats.

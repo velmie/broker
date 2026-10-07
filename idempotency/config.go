@@ -1,10 +1,13 @@
 package idempotency
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/velmie/idempo"
 
@@ -20,11 +23,8 @@ const (
 	defaultCommitTimeout = 5 * time.Second
 )
 
-// CommitErrorMode defines middleware behavior when committing the idempotency record fails.
-type CommitErrorMode int
-
 const (
-	// CommitFailOpen ignores commit errors and lets the handler succeed.
+	// CommitFailOpen reports commit errors to the required hook and requests Handled.
 	// Idempotency degrades for the message key when commit fails.
 	CommitFailOpen CommitErrorMode = iota
 	// CommitFailClosedUnlock returns the commit error and unlocks the key, allowing a retry.
@@ -32,6 +32,9 @@ const (
 	// CommitFailClosedKeepLock returns the commit error and keeps the lock until it expires.
 	CommitFailClosedKeepLock
 )
+
+// CommitErrorMode defines middleware behavior when committing the idempotency record fails.
+type CommitErrorMode int
 
 // Config defines idempotency middleware behavior.
 //
@@ -42,17 +45,11 @@ type Config struct {
 	HeaderName string
 	// KeyPrefix is prepended to the computed store key.
 	KeyPrefix string
-	// UseTopicInKey scopes the key by topic (storeKey = KeyPrefix + topic + ":" + key).
-	UseTopicInKey bool
-
-	// AckOnReplay acknowledges a message when it is treated as a replay.
-	// This is useful when you subscribe with AutoAck disabled and still want replays to be acknowledged.
-	//
-	// Do not enable this when your subscriber already auto-acks successful handler returns.
-	AckOnReplay bool
+	// UseSourceInKey scopes the key by source (storeKey = KeyPrefix + source + ":" + key).
+	UseSourceInKey bool
 
 	// RequireKey makes missing keys an error (ErrMissingKey). When false and a key is missing,
-	// the middleware becomes a no-op and passes the event through.
+	// the middleware becomes a no-op and passes the delivery through.
 	RequireKey bool
 	// KeyValidator validates the resolved key (Message.ID or HeaderName). Returning an error
 	// prevents processing and is propagated to the caller.
@@ -60,8 +57,8 @@ type Config struct {
 
 	// FingerprintFunc allows overriding how a message fingerprint is computed.
 	// Fingerprints protect against accidental key reuse with different payloads.
-	FingerprintFunc func(broker.Event) (idempo.Fingerprint, error)
-	// FingerprintHeaders is a list of broker.Message.Header keys to include in the default
+	FingerprintFunc func(context.Context, broker.Delivery) (idempo.Fingerprint, error)
+	// FingerprintHeaders is a list of broker.Message.Headers names to include in the default
 	// fingerprint calculation. Only used when FingerprintFunc is nil.
 	FingerprintHeaders []string
 
@@ -69,11 +66,14 @@ type Config struct {
 	CommitTimeout time.Duration
 	// CommitErrorMode defines how commit failures affect handler result.
 	CommitErrorMode CommitErrorMode
-	// CommitErrorHandler is called when storing the completion marker fails; it should be used for logging/metrics only.
-	CommitErrorHandler func(broker.Event, error)
+	// CommitErrorHandler receives the original wrapped failure and is required for fail-open.
+	// Use it for diagnostics only. A panic preserves the marker or lease and propagates
+	// with the commit cause. Redact application-specific values before logging.
+	CommitErrorHandler func(context.Context, broker.Delivery, error)
 
-	// OnReplay is called when a stored record is replayed (i.e. the handler is skipped).
-	OnReplay func(broker.Event, *idempo.Response)
+	// OnReplay receives an independently owned response when a stored record is replayed.
+	// A panic propagates without changing the marker or invoking business processing.
+	OnReplay func(context.Context, broker.Delivery, *idempo.Response)
 }
 
 // Option configures the middleware.
@@ -93,20 +93,10 @@ func WithKeyPrefix(prefix string) Option {
 	}
 }
 
-// WithUseTopicInKey toggles whether the event topic is included in the store key.
-func WithUseTopicInKey(enabled bool) Option {
+// WithUseSourceInKey toggles whether the delivery source is included in the store key.
+func WithUseSourceInKey(enabled bool) Option {
 	return func(c *Config) {
-		c.UseTopicInKey = enabled
-	}
-}
-
-// WithAckOnReplay toggles whether replayed messages should be explicitly acknowledged.
-//
-// This option is intended for manual-ack setups (AutoAck disabled). For auto-ack subscriptions,
-// replay is already acknowledged by returning nil.
-func WithAckOnReplay(enabled bool) Option {
-	return func(c *Config) {
-		c.AckOnReplay = enabled
+		c.UseSourceInKey = enabled
 	}
 }
 
@@ -125,7 +115,7 @@ func WithKeyValidator(validator func(string) error) Option {
 }
 
 // WithFingerprintFunc sets a custom fingerprint builder.
-func WithFingerprintFunc(fn func(broker.Event) (idempo.Fingerprint, error)) Option {
+func WithFingerprintFunc(fn func(context.Context, broker.Delivery) (idempo.Fingerprint, error)) Option {
 	return func(c *Config) {
 		c.FingerprintFunc = fn
 	}
@@ -153,14 +143,14 @@ func WithCommitErrorMode(mode CommitErrorMode) Option {
 }
 
 // WithCommitErrorHandler sets a callback invoked when Engine.Commit fails.
-func WithCommitErrorHandler(handler func(broker.Event, error)) Option {
+func WithCommitErrorHandler(handler func(context.Context, broker.Delivery, error)) Option {
 	return func(c *Config) {
 		c.CommitErrorHandler = handler
 	}
 }
 
-// WithOnReplay sets a callback invoked when an event is treated as a replay.
-func WithOnReplay(onReplay func(broker.Event, *idempo.Response)) Option {
+// WithOnReplay sets a callback invoked when an delivery is treated as a replay.
+func WithOnReplay(onReplay func(context.Context, broker.Delivery, *idempo.Response)) Option {
 	return func(c *Config) {
 		c.OnReplay = onReplay
 	}
@@ -168,28 +158,20 @@ func WithOnReplay(onReplay func(broker.Event, *idempo.Response)) Option {
 
 // NewConfig applies options and fills defaults.
 //
-// Middleware calls NewConfig internally; it is exposed for tests and advanced configuration
-// (for example, to inspect computed defaults).
+// Middleware calls NewConfig internally and then validates configuration.
+// NewConfig itself returns the configured values without validating them.
 func NewConfig(opts ...Option) Config {
 	c := Config{
 		HeaderName:      DefaultHeaderName,
-		UseTopicInKey:   true,
+		UseSourceInKey:  true,
 		CommitTimeout:   defaultCommitTimeout,
-		CommitErrorMode: CommitFailOpen,
+		CommitErrorMode: CommitFailClosedKeepLock,
 	}
 	for _, opt := range opts {
 		opt(&c)
 	}
 	if c.KeyValidator == nil {
 		c.KeyValidator = defaultKeyValidator
-	}
-	if c.CommitTimeout <= 0 {
-		c.CommitTimeout = defaultCommitTimeout
-	}
-	switch c.CommitErrorMode {
-	case CommitFailOpen, CommitFailClosedUnlock, CommitFailClosedKeepLock:
-	default:
-		c.CommitErrorMode = CommitFailOpen
 	}
 	c.HeaderName = strings.TrimSpace(c.HeaderName)
 	c.FingerprintHeaders = normalizeHeaders(c.FingerprintHeaders)
@@ -224,8 +206,37 @@ func defaultKeyValidator(k string) error {
 		return idempo.ErrMissingKey
 	}
 	if len(k) > defaultKeyLength {
-		return fmt.Errorf("%w: too long (max %d chars)", idempo.ErrInvalidKey, defaultKeyLength)
+		return fmt.Errorf("%w: too long (max %d bytes)", idempo.ErrInvalidKey, defaultKeyLength)
 	}
 
+	return nil
+}
+
+func validateConfig(cfg *Config) error {
+	if cfg.CommitTimeout <= 0 {
+		return failure("configure", "CommitTimeout", errors.New("must be positive"))
+	}
+	switch cfg.CommitErrorMode {
+	case CommitFailOpen:
+		if cfg.CommitErrorHandler == nil {
+			return failure("configure", "CommitErrorHandler", errors.New("required for fail-open"))
+		}
+	case CommitFailClosedUnlock, CommitFailClosedKeepLock:
+	default:
+		return failure("configure", "CommitErrorMode", errors.New("unknown mode"))
+	}
+	if !utf8.ValidString(cfg.HeaderName) {
+		return failure("configure", "HeaderName", errors.New("must be UTF-8"))
+	}
+	for i, name := range cfg.FingerprintHeaders {
+		if !utf8.ValidString(name) {
+			return failure("configure", "FingerprintHeaders", errors.New("names must be UTF-8"))
+		}
+		for _, other := range cfg.FingerprintHeaders[:i] {
+			if strings.EqualFold(name, other) {
+				return failure("configure", "FingerprintHeaders", errors.New("ambiguous names"))
+			}
+		}
+	}
 	return nil
 }

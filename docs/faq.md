@@ -1,36 +1,47 @@
-# FAQ
+# Frequently asked questions
 
-## What should I use for Message.ID
+## Does Broker hide every transport difference?
 
-Use a stable identifier for the business operation. Don't generate a new random ID per retry. Many transports and middlewares rely on stable IDs for dedupe or idempotency.
+It shares application-facing publication and processing contracts. Native
+configuration, capabilities, metadata and delivery guarantees remain explicit.
+See the [adapter comparison](backends.md).
 
-## Why do I see duplicates
+## Must a handler implement an interface?
 
-Common causes:
+No. `NewTypedHandler` accepts an ordinary `func(context.Context, T) error`.
+Use `NewTypedDeliveryHandler` for metadata or explicit dispositions. Use
+`NewDelivery(message, source)` when calling a handler directly with application
+data. Native consumers construct their own deliveries automatically.
 
-- your producer sets a new `Message.ID` every time
-- you disabled AutoAck and forgot to call `event.Ack()`
-- your handler has side effects but is not idempotent and the broker redelivers on timeouts
+## When is a delivery acknowledged?
 
-Use `idempotency.Middleware(engine, ...)` for consumer dedupe when your transport does not provide enough guarantees.
+The adapter acts on the returned disposition after processing. `Handled` requests
+successful transport progress. It does not prove that a later acknowledgment
+succeeded. In Azure ReceiveAndDelete mode, removal happens during receipt and
+there is no later completion request.
 
-## Loopback prevention does not work
+## Does returning an error retry the message?
 
-`LoopbackPreventionMiddleware` checks the "Instance-Id" header. Make sure your publisher sets it, for example:
+A non-nil error stops the run without applying its disposition. Use
+`WithRedelivery` or an explicit supported `RetryAfter` for an intentional native
+redelivery policy. Server redelivery after expiry or restart is a separate event.
 
-```go
-pub = broker.PublishWithInstanceID(instanceID)(pub)
-```
+## Who supplies message IDs?
 
-## Which middleware order is correct
+The application supplies stable logical IDs. Broker does not generate them or
+promise exactly-once business execution. See [identity](message-identity.md) and
+[idempotency](../idempotency/README.md).
 
-The last middleware passed to `CreateHandler` becomes the outermost wrapper. If ordering matters, write a test that asserts the behavior.
+## How do middleware and shutdown compose?
 
-## Request reply is timing out
+The first middleware argument is outermost. Cancel the coordinator's context to
+request shutdown, wait for `Run` to join, then close shared clients. Consumer
+shutdown policies control how admitted callbacks receive cancellation. See
+[middleware](middleware.md) and [coordinator](coordinator.md).
 
-Make sure:
+## Where should transport diagnostics go?
 
-- the request has `Header["Reply-To"]` set
-- the requester is subscribed to the reply topic before publishing
-- you correlate replies using `Reply-Message-Id` or `Correlation-Id`
-
+Use the existing structured logger. `LogProcessing` records handler outcomes;
+adapter observers report native operations. `DescribeError` retains structured
+causes at serialization time, with application-specific redaction. See
+[error handling](error-handling.md).

@@ -2,115 +2,40 @@ package idempotency_test
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/velmie/idempo"
 )
 
 type storeSpy struct {
-	inner idempo.Store
-
-	mu sync.Mutex
-
-	createCalls      int
-	getCalls         int
-	setResponseCalls int
-	deleteCalls      int
-
-	failSetResponseErr       error
-	failSetResponseRemaining int
-
-	deleteOnCreateOnce bool
-	deletedOnCreate    bool
+	idempo.Store
+	create func(context.Context, string, idempo.Fingerprint, time.Duration) (*idempo.Entry, bool, error)
+	get    func(context.Context, string) (*idempo.Entry, error)
+	commit func(context.Context, string, string, *idempo.Response, time.Duration) error
+	unlock func(context.Context, string, string) error
 }
 
-func newStoreSpy(inner idempo.Store) *storeSpy {
-	return &storeSpy{inner: inner}
-}
-
-func (s *storeSpy) Create(
-	ctx context.Context,
-	key string,
-	fp idempo.Fingerprint,
-	ttl time.Duration,
-) (entry *idempo.Entry, created bool, err error) {
-	s.mu.Lock()
-	s.createCalls++
-	deleteOnCreate := s.deleteOnCreateOnce && !s.deletedOnCreate
-	s.mu.Unlock()
-
-	entry, created, err = s.inner.Create(ctx, key, fp, ttl)
-	if err != nil {
-		return nil, false, err
+func (s *storeSpy) Create(ctx context.Context, key string, fp idempo.Fingerprint, ttl time.Duration) (*idempo.Entry, bool, error) {
+	if s.create != nil {
+		return s.create(ctx, key, fp, ttl)
 	}
-
-	if !created && entry != nil && entry.Response == nil && deleteOnCreate {
-		s.mu.Lock()
-		if !s.deletedOnCreate {
-			s.deletedOnCreate = true
-			s.mu.Unlock()
-			_ = s.Delete(ctx, key, entry.Token)
-		} else {
-			s.mu.Unlock()
-		}
+	return s.Store.Create(ctx, key, fp, ttl)
+}
+func (s *storeSpy) Get(ctx context.Context, key string) (*idempo.Entry, error) {
+	if s.get != nil {
+		return s.get(ctx, key)
 	}
-
-	return entry, created, nil
+	return s.Store.Get(ctx, key)
 }
-
-func (s *storeSpy) Get(ctx context.Context, key string) (entry *idempo.Entry, err error) {
-	s.mu.Lock()
-	s.getCalls++
-	s.mu.Unlock()
-
-	return s.inner.Get(ctx, key)
-}
-
-func (s *storeSpy) SetResponse(
-	ctx context.Context,
-	key, token string,
-	resp *idempo.Response,
-	ttl time.Duration,
-) (err error) {
-	s.mu.Lock()
-	s.setResponseCalls++
-	shouldFail := s.failSetResponseRemaining > 0
-	if shouldFail {
-		s.failSetResponseRemaining--
+func (s *storeSpy) SetResponse(ctx context.Context, key, token string, response *idempo.Response, ttl time.Duration) error {
+	if s.commit != nil {
+		return s.commit(ctx, key, token, response, ttl)
 	}
-	failErr := s.failSetResponseErr
-	s.mu.Unlock()
-
-	if shouldFail {
-		return failErr
+	return s.Store.SetResponse(ctx, key, token, response, ttl)
+}
+func (s *storeSpy) Delete(ctx context.Context, key, token string) error {
+	if s.unlock != nil {
+		return s.unlock(ctx, key, token)
 	}
-
-	return s.inner.SetResponse(ctx, key, token, resp, ttl)
-}
-
-func (s *storeSpy) Delete(ctx context.Context, key, token string) (err error) {
-	s.mu.Lock()
-	s.deleteCalls++
-	s.mu.Unlock()
-
-	return s.inner.Delete(ctx, key, token)
-}
-
-type storeSpySnapshot struct {
-	CreateCalls      int
-	GetCalls         int
-	SetResponseCalls int
-	DeleteCalls      int
-}
-
-func (s *storeSpy) Snapshot() storeSpySnapshot {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return storeSpySnapshot{
-		CreateCalls:      s.createCalls,
-		GetCalls:         s.getCalls,
-		SetResponseCalls: s.setResponseCalls,
-		DeleteCalls:      s.deleteCalls,
-	}
+	return s.Store.Delete(ctx, key, token)
 }

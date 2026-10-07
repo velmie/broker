@@ -2,10 +2,8 @@ package idempotency
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"strconv"
+	"runtime/debug"
 	"strings"
 
 	"github.com/velmie/idempo"
@@ -13,199 +11,165 @@ import (
 	"github.com/velmie/broker"
 )
 
-const defaultOperation = "consume"
 const keySeparator = ":"
 
-// Middleware returns a broker.Middleware that enforces idempotent message processing.
+// Middleware commits an empty marker only after concrete Handled without error.
+// Replays skip processing and request Handled. Native settlement remains with the
+// consumer. The required engine and its store remain caller-owned.
 //
-// Key resolution:
-//   - primary: broker.Message.ID
-//   - fallback: broker.Message.Header[HeaderName] (default: "Idempotency-Key")
-//
-// Store key is optionally scoped by topic (default) and can be prefixed via WithKeyPrefix.
-//
-// Default fingerprint uses the event topic + SHA-256(body) + optional selected headers
-// (see WithFingerprintHeaders). Reusing the same key with a different fingerprint returns idempo.ErrKeyConflict.
-//
-// On replay, the wrapped handler is skipped and Middleware returns nil.
-// If you subscribe with AutoAck disabled, enable WithAckOnReplay(true) or handle acks yourself (for example via WithOnReplay).
-func Middleware(engine *idempo.Engine, opts ...Option) broker.Middleware {
+// Hooks are synchronous and must support the caller's concurrency. Replay-hook
+// panics propagate without changing the marker. A commit-hook panic keeps the
+// lease/marker untouched and preserves both panic evidence and the commit cause.
+func Middleware(engine *idempo.Engine, opts ...Option) (broker.HandlerMiddleware, error) {
 	cfg := NewConfig(opts...)
-	if engine == nil {
-		panic("broker/idempotency: nil engine")
+	if err := validateConfig(&cfg); err != nil {
+		return broker.HandlerMiddleware{}, err
 	}
-
-	return func(next broker.Handler) broker.Handler {
-		return func(event broker.Event) error {
-			msg := event.Message()
-
-			storeKey, hasKey, err := resolveStoreKey(event, cfg)
+	return broker.HandlerMiddleware{Wrap: func(next broker.HandlerFunc) broker.HandlerFunc {
+		return func(ctx context.Context, delivery broker.Delivery) (broker.Disposition, error) {
+			key, hasKey, err := resolveStoreKey(delivery, &cfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if !hasKey {
-				return next(event)
+				return next(ctx, delivery)
 			}
-
-			fp, err := buildFingerprint(event, cfg, cfg.FingerprintHeaders)
+			fp, err := buildFingerprint(ctx, delivery, &cfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			ctx := msg.Context()
-			if ctx == nil {
-				ctx = context.Background()
-			}
-
-			// When waiting is enabled, the key can disappear if the owner unlocks on failure.
-			// Retry once to attempt to acquire a fresh lock instead of returning ErrKeyNotFound.
 			for attempt := 0; attempt < 2; attempt++ {
-				result, err := engine.Process(ctx, storeKey, fp)
-				if err != nil {
-					if attempt == 0 && errors.Is(err, idempo.ErrKeyNotFound) {
+				result, processErr := engine.Process(ctx, key, fp)
+				if processErr != nil {
+					if attempt == 0 && errors.Is(processErr, idempo.ErrKeyNotFound) {
 						continue
 					}
-					return err
+					return nil, failure("acquire", "", processErr)
 				}
-
 				if result.Response != nil {
 					if cfg.OnReplay != nil {
-						cfg.OnReplay(event, result.Response)
+						cfg.OnReplay(ctx, delivery, idempo.CloneResponse(result.Response))
 					}
-					if cfg.AckOnReplay {
-						if err := event.Ack(); err != nil {
-							return err
-						}
-					}
-					return nil
+					return broker.Handled{}, nil
 				}
-
 				if !result.IsOwner {
-					return idempo.ErrInProgress
+					return nil, failure("acquire", "", idempo.ErrInProgress)
 				}
-
-				return handleOwner(engine, ctx, next, event, cfg, storeKey, result.Token)
+				return handleOwner(engine, ctx, next, delivery, &cfg, key, result.Token)
 			}
-
-			return idempo.ErrKeyNotFound
+			return nil, failure("acquire", "", idempo.ErrKeyNotFound)
 		}
-	}
+	}}, nil
 }
 
-func resolveStoreKey(event broker.Event, cfg Config) (storeKey string, hasKey bool, err error) {
-	msg := event.Message()
+// Error identifies the failed middleware operation and, when available, a
+// configuration or message field. Operations are configure, key, fingerprint,
+// acquire, commit and unlock. Cause can contain application or store data.
+// Logging adapters must retain its type and cause while redacting sensitive text.
+// Field contains a stable field name, never a key, header value or source label.
+type Error struct {
+	Operation, Field string
+	Cause            error
+}
 
-	rawKey := strings.TrimSpace(msg.ID)
-	if rawKey == "" && msg.Header != nil && cfg.HeaderName != "" {
-		rawKey = strings.TrimSpace(msg.Header.Get(cfg.HeaderName))
+func (e *Error) Error() string {
+	return "idempotency " + e.Operation + " " + e.Field + ": " + e.Cause.Error()
+}
+func (e *Error) Unwrap() error { return e.Cause }
+
+func failure(operation, field string, cause error) error {
+	return &Error{Operation: operation, Field: field, Cause: cause}
+}
+
+func resolveStoreKey(delivery broker.Delivery, cfg *Config) (storeKey string, hasKey bool, err error) {
+	msg := delivery.Message()
+	key := strings.TrimSpace(msg.ID)
+	field := "Message.ID"
+	if key == "" && cfg.HeaderName != "" {
+		text, err := selectedText(msg.Headers, cfg.HeaderName)
+		if err != nil {
+			return "", false, failure("key", "HeaderName", err)
+		}
+		key = strings.TrimSpace(text)
+		field = "HeaderName"
 	}
-
-	if rawKey == "" {
+	if key == "" {
 		if cfg.RequireKey {
-			return "", false, idempo.ErrMissingKey
+			return "", false, failure("key", field, idempo.ErrMissingKey)
 		}
 		return "", false, nil
 	}
-
-	if err := cfg.KeyValidator(rawKey); err != nil {
-		return "", false, err
+	if err := cfg.KeyValidator(key); err != nil {
+		return "", false, failure("key", field, err)
 	}
-
-	key := rawKey
-	if cfg.UseTopicInKey {
-		key = event.Topic() + keySeparator + rawKey
+	if cfg.UseSourceInKey {
+		key = delivery.Source() + keySeparator + key
 	}
-
 	return cfg.KeyPrefix + key, true, nil
 }
 
-func buildFingerprint(event broker.Event, cfg Config, fingerprintHeaders []string) (idempo.Fingerprint, error) {
-	if cfg.FingerprintFunc != nil {
-		return cfg.FingerprintFunc(event)
-	}
-
-	msg := event.Message()
-
-	return idempo.Fingerprint{
-		Operation:   defaultOperation,
-		Target:      event.Topic(),
-		HeadersHash: hashHeaders(msg.Header, fingerprintHeaders),
-		BodyHash:    hashBody(msg.Body),
-	}, nil
-}
-
-func hashBody(body []byte) string {
-	sum := sha256.Sum256(body)
-	return hex.EncodeToString(sum[:])
-}
-
-func hashHeaders(header broker.Header, keys []string) string {
-	if header == nil || len(keys) == 0 {
-		return ""
-	}
-
-	var b strings.Builder
-	for _, k := range keys {
-		if k == "" {
-			continue
-		}
-		b.WriteString(strconv.Quote(k))
-		b.WriteByte('=')
-		b.WriteString(strconv.Quote(header.Get(k)))
-		b.WriteByte('\n')
-	}
-
-	if b.Len() == 0 {
-		return ""
-	}
-
-	sum := sha256.Sum256([]byte(b.String()))
-	return hex.EncodeToString(sum[:])
-}
-
-func handleOwner(
-	engine *idempo.Engine,
-	parentCtx context.Context,
-	next broker.Handler,
-	event broker.Event,
-	cfg Config,
-	storeKey string,
-	token string,
-) error {
-	unlockOnReturn := true
+func handleOwner(engine *idempo.Engine, parent context.Context, next broker.HandlerFunc, delivery broker.Delivery,
+	cfg *Config, key, token string) (result broker.Disposition, err error) {
+	unlock := true
+	var reportedCommitErr error
 	defer func() {
-		if !unlockOnReturn {
-			return
+		panicValue := recover()
+		var cleanupErr error
+		if unlock {
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(parent), cfg.CommitTimeout)
+			cleanupErr = engine.Unlock(cleanup, key, token)
+			cancel()
+			if cleanupErr != nil {
+				cleanupErr = failure("unlock", "", cleanupErr)
+			}
 		}
-		unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), cfg.CommitTimeout)
-		defer cancel()
-		_ = engine.Unlock(unlockCtx, storeKey, token)
+		if panicValue != nil {
+			if cleanupErr != nil {
+				panic(errors.Join(&broker.PanicError{Value: panicValue, Stack: debug.Stack()}, cleanupErr))
+			}
+			panic(panicValue)
+		}
+		if cleanupErr != nil {
+			err = errors.Join(err, reportedCommitErr, cleanupErr)
+		}
 	}()
-
-	if err := next(event); err != nil {
-		return err
+	result, err = next(parent, delivery)
+	if err != nil {
+		return result, err
 	}
-
-	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), cfg.CommitTimeout)
-	defer cancel()
-	if err := engine.Commit(commitCtx, storeKey, token, &idempo.Response{}); err != nil {
-		if cfg.CommitErrorHandler != nil {
-			cfg.CommitErrorHandler(event, err)
-		}
-
-		switch cfg.CommitErrorMode {
-		case CommitFailOpen:
-			return nil
-		case CommitFailClosedUnlock:
-			return err
-		case CommitFailClosedKeepLock:
-			unlockOnReturn = false
-			return err
-		default:
-			return nil
-		}
+	if _, ok := result.(broker.Handled); !ok {
+		return result, nil
 	}
-
-	unlockOnReturn = false
-	return nil
+	commit, cancel := context.WithTimeout(context.WithoutCancel(parent), cfg.CommitTimeout)
+	commitErr := engine.Commit(commit, key, token, &idempo.Response{})
+	cancel()
+	if commitErr == nil {
+		unlock = false
+		return result, nil
+	}
+	commitErr = failure("commit", "", commitErr)
+	// Disable cleanup before a hook can panic: an ambiguous accepted marker must
+	// not be deleted by diagnostic code. The selected policy is applied afterward.
+	unlock = false
+	if cfg.CommitErrorHandler != nil {
+		func() {
+			defer func() {
+				if value := recover(); value != nil {
+					panic(errors.Join(&broker.PanicError{Value: value, Stack: debug.Stack()}, commitErr))
+				}
+			}()
+			cfg.CommitErrorHandler(parent, delivery, commitErr)
+		}()
+	}
+	switch cfg.CommitErrorMode {
+	case CommitFailOpen:
+		reportedCommitErr = commitErr
+		unlock = true
+		return result, nil
+	case CommitFailClosedUnlock:
+		unlock = true
+		return result, commitErr
+	default:
+		return result, commitErr
+	}
 }

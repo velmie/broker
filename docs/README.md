@@ -1,30 +1,21 @@
-# Broker docs
+# Broker documentation
 
-Start here if you want to understand the library in under a minute:
+Start with the [in-memory example](../readme.md#publish-and-handle-a-message),
+then [connect an application](getting-started.md) to a transport adapter.
 
-- [Getting Started](getting-started.md)
-- [Headers](headers.md)
-- [Middleware](middleware.md)
-- [Error Handling](error-handling.md)
-- [Subscription Coordinator](coordinator.md)
-- [Request Reply](request-reply.md)
-- [Backends](backends.md)
-- [FAQ](faq.md)
+| Topic | Guide |
+| --- | --- |
+| Transport boundaries and adapter choice | [Adapters](backends.md) |
+| Consumer startup and shutdown | [Coordinator](coordinator.md) |
+| Processing and publication policies | [Middleware](middleware.md) |
+| Failures, retries and structured diagnostics | [Error handling](error-handling.md) |
+| Message metadata | [Headers](headers.md) and [identity](message-identity.md) |
+| Responses to commands | [Request and reply](request-reply.md) |
+| Native AWS client configuration | [AWS clients](aws-sdk.md) |
+| Common questions | [FAQ](faq.md) |
+| Upgrading an existing application | [Migration](migration.md) |
+| Building and running this repository | [Development](development.md) |
 
-## Modules
-
-This repository is multi-module. Each backend or add-on has its own `go.mod`.
-
-- Core interfaces and helpers: `github.com/velmie/broker` (repo root)
-- NATS JetStream backend: `github.com/velmie/broker/natsjs/v2` (see [natsjs/README.md](../natsjs/README.md))
-- AWS SQS backend: `github.com/velmie/broker/sqs`
-- AWS SNS backend: `github.com/velmie/broker/sns`
-- Azure Service Bus backend: `github.com/velmie/broker/azuresb`
-- OpenTelemetry middleware: `github.com/velmie/broker/otelbroker`
-- Idempotency middleware: `github.com/velmie/broker/idempotency` (see [idempotency/README.md](../idempotency/README.md))
-
-## Examples
-
-Runnable examples live in `../_examples/`.
-
-If you are looking for end-to-end service wiring, also check how this library is used in a real project: `wallet-business-users2/internal/broker` (local path in this workspace).
+Optional modules provide [idempotency](../idempotency/README.md) and
+[OpenTelemetry](../otelbroker/README.md). Each [adapter guide](../readme.md#modules)
+describes its configuration, delivery guarantees and executable examples.

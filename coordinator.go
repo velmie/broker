@@ -2,106 +2,97 @@ package broker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 )
 
-// SubscribeFunc defines the signature for functions that Subscribe to a topic
-type SubscribeFunc func(ctx context.Context) (Subscription, error)
-
-// SubscriptionCoordinator is responsible for managing and coordinating multiple named subscriptions
-type SubscriptionCoordinator struct {
-	se            []SubscriptionEnvelope
-	mu            sync.Mutex
-	isset         map[string]struct{}
-	subscriptions []Subscription
-	l             Logger
+// Coordinator is single-use. It validates every local registration before any
+// Run starts. It does not provide a global remote-readiness barrier.
+type Coordinator struct {
+	mu      sync.Mutex
+	used    bool
+	entries []registration
 }
 
-// NewSubscriptionCoordinator initializes SubscriptionCoordinator
-func NewSubscriptionCoordinator() *SubscriptionCoordinator {
-	return &SubscriptionCoordinator{
-		se:    make([]SubscriptionEnvelope, 0),
-		isset: make(map[string]struct{}),
+func NewCoordinator() *Coordinator { return &Coordinator{} }
+
+// Add registers a source under a diagnostic name made of letters, numbers,
+// dots, dashes and underscores. Factories and handlers are required.
+func (c *Coordinator) Add(name string, factory ConsumerFactory, handler Handler) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.used {
+		return errors.New("coordinator already used")
 	}
+	if name == "" || strings.IndexFunc(name, func(r rune) bool {
+		valid := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_'
+		return !valid
+	}) >= 0 {
+		return errors.New("invalid registration name")
+	}
+	for _, entry := range c.entries {
+		if entry.name == name {
+			return fmt.Errorf("duplicate registration %q", name)
+		}
+	}
+	c.entries = append(c.entries, registration{name: name, factory: factory, handler: handler})
+	return nil
 }
 
-// SubscribeAll attempts to Subscribe to all the topics defined in the SubscriptionCoordinator
-func (s *SubscriptionCoordinator) SubscribeAll(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	done := ctx.Done()
-	for _, ns := range s.se {
-		select {
-		case <-done:
-			return ctx.Err()
-		default:
-		}
-		if s.l != nil {
-			s.l.Info(fmt.Sprintf("subscribing to %s", ns.Name))
-		}
-		sub, err := ns.Subscribe(ctx)
+// Run requests peer shutdown after the first erroneous Run return, joins all
+// runs and preserves their causes. A successful finite source does not stop peers.
+func (c *Coordinator) Run(parent context.Context) error {
+	c.mu.Lock()
+	if c.used {
+		c.mu.Unlock()
+		return errors.New("coordinator already used")
+	}
+	c.used = true
+	entries := append([]registration(nil), c.entries...)
+	c.mu.Unlock()
+	if err := context.Cause(parent); err != nil {
+		return err
+	}
+	consumers := make([]Consumer, len(entries))
+	for i, entry := range entries {
+		consumer, err := entry.factory()
 		if err != nil {
-			err = fmt.Errorf("failed to Subscribe to '%s': %w", ns.Name, err)
-			if s.l != nil {
-				s.l.Error(err.Error())
+			return &RegistrationError{Name: entry.name, Operation: "factory", Cause: err}
+		}
+		if err = consumer.Validate(entry.handler.Requirements()...); err != nil {
+			return &RegistrationError{Name: entry.name, Operation: "validate", Cause: err}
+		}
+		consumers[i] = consumer
+	}
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	results := make(chan error, len(entries))
+	for i, entry := range entries {
+		go func(consumer Consumer, entry registration) {
+			err := consumer.Run(ctx, entry.handler)
+			if err != nil {
+				err = &RegistrationError{Name: entry.name, Operation: "run", Cause: err}
+				cancel()
 			}
-			return err
-		}
-		s.subscriptions = append(s.subscriptions, sub)
+			results <- err
+		}(consumers[i], entry)
 	}
-	return nil
-}
-
-// UnsubscribeAll attempts to unsubscribe from all active subscriptions managed by the SubscriptionCoordinator
-func (s *SubscriptionCoordinator) UnsubscribeAll() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, sub := range s.subscriptions {
-		if err := sub.Unsubscribe(); err != nil {
-			if s.l != nil {
-				s.l.Error(fmt.Sprintf("failed to unsubscribe from '%s': %s", sub.Topic(), err))
-			}
-			continue
-		}
-		if s.l != nil {
-			s.l.Info(fmt.Sprintf("unsubscribed from %s", sub.Topic()))
+	var all []error
+	for range entries {
+		if err := <-results; err != nil {
+			all = append(all, err)
 		}
 	}
-	s.subscriptions = make([]Subscription, 0)
-}
-
-// AddSubscription adds a new subscription function with a unique Name
-func (s *SubscriptionCoordinator) AddSubscription(name string, sf SubscribeFunc) error {
-	return s.AddSubscriptionE(SubscriptionEnvelope{name, sf})
-}
-
-func (s *SubscriptionCoordinator) AddSubscriptionE(se SubscriptionEnvelope) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.isset[se.Name]; ok {
-		return fmt.Errorf("subscription with Name %q is already added", se.Name)
+	if err := context.Cause(parent); err != nil {
+		all = append(all, err)
 	}
-	s.se = append(s.se, se)
-	s.isset[se.Name] = struct{}{}
-
-	return nil
+	return errors.Join(all...)
 }
 
-func (s *SubscriptionCoordinator) SetLogger(l Logger) {
-	s.l = l
-}
-
-// SubscriptionEnvelope is a container for a named subscription function
-type SubscriptionEnvelope struct {
-	Name      string
-	Subscribe SubscribeFunc
-}
-
-// CreateSubscribeFunc creates SubscribeFunc with the given parameters
-func CreateSubscribeFunc(topic string, sub Subscriber, h Handler, opts ...SubscribeOption) SubscribeFunc {
-	return func(ctx context.Context) (Subscription, error) {
-		return sub.Subscribe(topic, h, opts...)
-	}
+type registration struct {
+	name    string
+	factory ConsumerFactory
+	handler Handler
 }

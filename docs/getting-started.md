@@ -1,60 +1,70 @@
-# Getting Started
+# Connect an application
 
-"broker" standardizes publish/subscribe message handling behind small interfaces. Your application code depends on `broker.Publisher` and `broker.Subscriber`, while the transport specific code lives in a backend module.
+Broker separates application processing from message transport. A publisher is
+bound to a destination. A consumer receives deliveries from a source and passes
+them to a handler. The handler returns a delivery decision, which the adapter
+translates into its native acknowledgment or completion operation.
 
-## Core concepts
+The [README example](../readme.md#publish-and-handle-a-message) runs this flow in
+memory. For a messaging system, use the core and the appropriate
+[adapter module](backends.md). Their manifests specify compatible dependencies.
 
-- `Publisher.Publish(topic, msg)` sends a `*broker.Message`
-- `Subscriber.Subscribe(topic, handler, opts...)` registers a `broker.Handler`
-- `broker.Event` carries `Topic()`, `Message()`, and `Ack()`
-- `broker.Message` carries `ID`, `Header`, `Body`, and a `context.Context`
+## Define the application handler
 
-## Publish
-
-```go
-msg := broker.NewMessageWithContext(ctx)
-msg.ID = "order-123"
-msg.Body = []byte(`{"orderId":"123"}`)
-msg.Header.SetCorrelationID("corr-1")
-
-if err := pub.Publish("orders.created", msg); err != nil {
-	// handle error
-}
-```
-
-## Subscribe with typed handlers
-
-`CreateHandler` decodes `Message.Body` into a typed value and passes it to your function.
+Keep the business function independent of the transport. Wrap an
+application-supplied `save` function:
 
 ```go
-type OrderCreated struct {
-	OrderID string `json:"orderId"`
-}
+package orders
 
-handler := broker.CreateHandler(
-	broker.DecoderFunc(json.Unmarshal),
-	func(ctx context.Context, m OrderCreated) error {
-		// business logic
-		return nil
-	},
+import (
+	"context"
+	"errors"
+
+	"github.com/velmie/broker"
 )
 
-_, err := sub.Subscribe("orders.created", handler)
-if err != nil {
-	// handle error
+type Order struct {
+	ID       string `json:"id"`
+	Quantity int    `json:"quantity"`
+}
+
+func NewHandler(save func(context.Context, Order) error) broker.Handler {
+	return broker.NewTypedHandler(broker.DecodeJSON[Order],
+		func(ctx context.Context, order Order) error {
+			if order.Quantity <= 0 {
+				return errors.New("quantity must be positive")
+			}
+			return save(ctx, order)
+		})
 }
 ```
 
-## Acknowledgment and retries
+Decoding happens before the callback. A nil callback error requests `Handled`.
+An error stops the consumer unless an explicit policy maps it to a supported
+disposition. Add [redelivery](middleware.md) only for failures that are safe to
+retry after any partial application work.
 
-- Default behavior is AutoAck: if the handler returns `nil`, the message is acknowledged.
-- Disable it with `broker.DisableAutoAck()` and call `event.Ack()` yourself.
-- Attach an error handler to log, delay, and resubscribe (for example `broker.WithDefaultErrorHandler(sub, logger)`).
+Use `NewTypedDeliveryHandler` when the callback needs the source, headers or an
+explicit disposition. For a direct call, construct a delivery with
+`broker.NewDelivery(message, "orders")`. It shares the message's storage and has
+no transport-specific capabilities.
 
-## Choosing a backend
+## Bind and run
 
-Pick a module that matches your transport:
+1. Create the native SDK client and provision the required queue, stream or
+   subscription. The application owns credentials, topology and client lifetime.
+2. Bind an adapter publisher to a destination. Wrap it with `NewTypedPublisher`
+   to encode application values and attach application-owned metadata.
+3. Bind a consumer locally through a `ConsumerFactory`. Register the factory and
+   handler with a [Coordinator](coordinator.md), then call `Run(ctx)`.
+4. Cancel the run context to request shutdown. Wait for `Run` to return before
+   closing clients or telemetry providers.
 
-- NATS JetStream: [natsjs/README.md](../natsjs/README.md)
-- AWS SQS/SNS: `../sqs/`, `../sns/`
-- Azure Service Bus: `../azuresb/`
+The runnable [NATS orders application](../natsjs/README.md#run-the-example)
+shows the complete wiring. Other adapter guides provide equivalent examples.
+
+Consumers own delivery acknowledgment and renewal. A successful callback,
+successful publication and confirmed acknowledgment are separate outcomes.
+Keep [logical message IDs](message-identity.md) stable across retries, and make
+application effects tolerate duplicates.

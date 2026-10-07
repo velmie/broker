@@ -1,39 +1,41 @@
-# Backends
+# Transport adapters
 
-This repo contains multiple transport modules. Your application code should depend on `broker.Publisher` and `broker.Subscriber`, then choose a backend module for production wiring.
+An adapter implements Broker's publication and consumption contracts for a
+messaging system. Application handlers use the same message and disposition
+types, while configuration and delivery guarantees remain specific to the
+transport.
 
-## NATS JetStream
+| Module | Publication | Consumption |
+| --- | --- | --- |
+| [NATS JetStream](../natsjs/README.md) | Subject-bound, waits for a JetStream response | Existing durable pull consumer with explicit acknowledgment |
+| [Amazon SQS](../sqs/README.md) | Queue-bound, waits for `SendMessage` acceptance | Sequential receiving, visibility renewal and deletion |
+| [Amazon SNS](../sns/README.md) | Topic-bound, waits for `Publish` acceptance | Use a downstream adapter, such as SQS |
+| [Azure Service Bus](../azuresb/readme.md) | Bound SDK sender | Queue or subscription receiver in PeekLock or ReceiveAndDelete mode |
 
-- Module: `github.com/velmie/broker/natsjs/v2`
-- Best for: low latency pub/sub, consumer groups, request/reply style workflows
-- Message ID: written to NATS header `Nats-Msg-Id` (JetStream de-dup)
-- Tests: integration tests use Docker (`ory/dockertest`)
+The application configures native clients and topology. Adapters borrow clients
+or acquire the resources explicitly assigned to them, and document who closes
+each resource. They do not infer deployment names or provision infrastructure.
 
-See [natsjs/README.md](../natsjs/README.md).
+## Capabilities and guarantees
 
-## AWS SQS
+Handlers declare requirements such as redelivery, attempt metadata or renewal.
+Consumers validate the complete combination before processing. A shared
+disposition does not imply identical native behavior: Azure supports immediate
+abandonment for `RetryAfter`, while SQS accepts whole-second visibility delays.
+Consult the adapter guide before selecting a policy.
 
-- Module: `github.com/velmie/broker/sqs`
-- Best for: durable queues, simple at-least-once processing
-- Ack: `event.Ack()` deletes the message
-- Message ID: stored via `Header["id"]` in message attributes (publisher calls `broker.SetIDHeader`)
+Native metadata is available through adapter-specific read-only interfaces.
+Keep it at the integration boundary when ordinary application code only needs
+the decoded value. Publication acceptance never proves downstream processing.
 
-## AWS SNS
+## Implement another adapter
 
-- Module: `github.com/velmie/broker/sns`
-- Best for: fan-out pub/sub (often combined with SQS subscriptions)
-- FIFO topics: `MessageDeduplicationId` is set to `Message.ID`
+Implement `Publisher` for a bound destination and `Consumer` for a bound source.
+Keep factories and `Validate` local and free of resource acquisition. `Run` owns
+acquisition, remote checks and cleanup, and joins its work before returning.
 
-## Azure Service Bus
-
-- Module: `github.com/velmie/broker/azuresb`
-- Best for: Azure native queues/topics with lock and delivery semantics
-- Ack: `event.Ack()` completes the message (or enable AutoAck)
-- Message ID: mapped to Service Bus MessageID
-
-See [azuresb/readme.md](../azuresb/readme.md).
-
-## Add-ons (not transports)
-
-- OpenTelemetry: `github.com/velmie/broker/otelbroker`
-- Idempotent consumers: `github.com/velmie/broker/idempotency`
+Document supported requirements and concrete dispositions, message/header
+mapping, publication guarantees, cancellation, resource ownership and uncertain
+native outcomes. Preserve original errors with operation and source context.
+Use the existing adapters as examples without importing their transport policy
+into the core.

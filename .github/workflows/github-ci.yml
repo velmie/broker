@@ -1,44 +1,131 @@
 name: GitHub CI
+
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CGO_ENABLED: '1'
+  GOTOOLCHAIN: local
+  GOFLAGS: -mod=readonly
+  GOWORK: 'off'
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  linter:
+  modules:
+    name: Independent module ${{ matrix.module }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Unpublished successor adapters are checked with the local core below.
+        module: ['.']
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
     steps:
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
         with:
-          go-version: '1.26'
-      - uses: actions/checkout@v4
+          persist-credentials: false
+      - uses: actions/setup-go@v7
         with:
-          fetch-depth: 1
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
-        with:
-          version: v2.11.3
-        env:
-          CGO_ENABLED: 0
-  tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.26'
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - name: Run natsjs tests
+          go-version: '1.26.8'
+          cache-dependency-path: '**/go.sum'
+      - name: Check Go formatting
+        if: matrix.module == '.'
         run: |
-          cd natsjs/
-          go test -v -cover ./...
-        env:
-          CGO_ENABLED: 0
+          unformatted="$(git ls-files -z '*.go' | xargs -0 gofmt -l)"
+          if [ -n "$unformatted" ]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Build
+        run: go build ./...
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.14.0
+          working-directory: ${{ matrix.module }}
+          args: --config="${{ github.workspace }}/.golangci.yml" --modules-download-mode=readonly ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test with race detection
+        run: go test -race -count=1 -timeout 10m ./...
+      - name: Install vulnerability scanner
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          printf '%s\n' "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Check called vulnerable symbols
+        run: govulncheck ./...
+
+  composition:
+    name: Successor modules (${{ matrix.nats_image }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        nats_image: ['nats:2.15.0', 'nats:2.9.16']
+    env:
+      NATS_TEST_IMAGE: ${{ matrix.nats_image }}
+      SQS_TEST_IMAGE: softwaremill/elasticmq-native:1.7.1
+      SNS_TEST_IMAGE: motoserver/moto:5.2.3
+      SNS_BINARY_TEST_IMAGE: motoserver/moto:5.1.14
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.8'
+          cache-dependency-path: '**/go.sum'
+      - name: Install linter
+        uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.14.0
+          install-only: 'true'
+      - name: Install vulnerability scanner
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          printf '%s\n' "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Verify successor modules with the local core
+        run: |
+          repository_dir="$PWD"
+          workspace_dir="$(mktemp -d)"
+          trap 'rm -rf "$workspace_dir"' EXIT
+          (
+            cd "$workspace_dir"
+            go work init "$repository_dir" "$repository_dir/natsjs" "$repository_dir/sqs" \
+              "$repository_dir/sns" "$repository_dir/azuresb" "$repository_dir/otelbroker" \
+              "$repository_dir/idempotency" "$repository_dir/idempotency/examples" \
+              "$repository_dir/otelbroker/examples"
+            # Compose the checked-out module versions for source-level integration.
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker@v1.0.0=$repository_dir"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/natsjs/v3@v3.0.0=$repository_dir/natsjs"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/sqs@v1.0.0=$repository_dir/sqs"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/sns@v1.0.0=$repository_dir/sns"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/azuresb@v1.0.0=$repository_dir/azuresb"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/idempotency@v1.0.0=$repository_dir/idempotency"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/otelbroker@v1.0.0=$repository_dir/otelbroker"
+          )
+          export GOWORK="$workspace_dir/go.work"
+          for module in . natsjs sqs sns azuresb idempotency otelbroker idempotency/examples otelbroker/examples; do
+            (
+              cd "$module"
+              go build ./...
+              golangci-lint run --config="$repository_dir/.golangci.yml" --modules-download-mode=readonly ./...
+              go vet ./...
+              go test -race -count=1 -timeout 10m ./...
+              govulncheck ./...
+            )
+          done

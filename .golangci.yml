@@ -1,4 +1,7 @@
 version: "2"
+run:
+  timeout: 5m
+  relative-path-mode: gomod
 linters:
   default: none
   enable:
@@ -16,6 +19,7 @@ linters:
     - ineffassign
     - lll
     - misspell
+    - mnd
     - nakedret
     - nolintlint
     - rowserrcheck
@@ -25,39 +29,37 @@ linters:
     - unused
     - whitespace
   settings:
-    dupl:
-      threshold: 100
+    govet:
+      enable:
+        - shadow
+    mnd:
+      checks:
+        - argument
+        - case
+        - condition
+        - return
     funlen:
       lines: 120
       statements: 60
     goconst:
+      # Independent test fixtures need not share a constant just because values match.
+      ignore-tests: true
       min-len: 2
       min-occurrences: 2
-    errcheck:
-      # Common ack/close patterns in tests and tear-downs; team historically
-      # ignores these errors per legacy v1.50 config.
-      exclude-functions:
-        - (*github.com/nats-io/nats.go.Msg).Ack
-        - (*github.com/nats-io/nats.go.Msg).AckSync
-        - (*github.com/nats-io/nats.go.Msg).Nak
-        - (*github.com/nats-io/nats.go.Msg).NakWithDelay
     gocritic:
+      # Exported contracts may precede private receiver types.
+      disabled-checks:
+        - typeDefFirst
       enabled-tags:
         - diagnostic
         - experimental
         - opinionated
         - performance
         - style
-      disabled-checks:
-        # Pre-existing patterns kept for parity with legacy v1 config.
-        - appendAssign
-        - hugeParam
-        - sloppyReassign
-        - elseif
     gocyclo:
       min-complexity: 20
     lll:
-      line-length: 145
+      line-length: 140
     misspell:
       locale: US
     nolintlint:
@@ -72,41 +74,13 @@ linters:
       - legacy
       - std-error-handling
     rules:
-      # Tests: relaxed rules (parity with legacy v1 behavior).
       - linters:
-          - errcheck
           - funlen
-          - goconst
-          - gocritic
-          - gochecknoinits
-          - gosec
-          - govet
-          - lll
-          - mnd
-          - misspell
-          - staticcheck
-          - unparam
-          - whitespace
         path: _test\.go$
-      # otelbroker middleware: pre-existing patterns kept for parity.
-      - linters:
-          - staticcheck
-          - unparam
-        path: otelbroker/middleware\.go$
-      # azuresb: pre-existing patterns kept for parity.
-      - linters:
-          - gosec
-        path: azuresb/subscription\.go$
-        text: 'G118'
-      - linters:
-          - misspell
-        path: azuresb/receiver\.go$
-        text: 'cancelled'
     paths:
       - third_party$
       - builtin$
       - examples$
-      - _examples
 formatters:
   enable:
     - gofmt
