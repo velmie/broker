@@ -161,7 +161,16 @@ func docker(args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	// #nosec G702 -- Fixed Docker operations use test-owned paths and IDs without a shell.
-	return exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+	command := exec.CommandContext(ctx, "docker", args...)
+	if args[0] == "logs" {
+		return command.CombinedOutput()
+	}
+	output, err := command.Output()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		err = fmt.Errorf("Docker operation: %w: %s", err, exit.Stderr)
+	}
+	return output, err
 }
 
 func assertNativePoliciesObserved(t *testing.T, audit *nats.Subscription) {

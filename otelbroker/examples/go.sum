@@ -69,13 +69,13 @@ github.com/velmie/broker/azuresb v1.0.0 h1:4TU91JEpXEhAbcObxUZOGkJfnISK0iOivgtGr
 github.com/velmie/broker/azuresb v1.0.0/go.mod h1:eLXsQnypGDc8ua4T9wF+d2ru8Umm+X4oPD0nIRl+XaY=
 github.com/velmie/broker/idempotency v1.0.0 h1:6O2CCoF6QgWh4gmhb8uyObfn5UqQkwIm1GC/7JmLpww=
 github.com/velmie/broker/idempotency v1.0.0/go.mod h1:ywajjLmOEx50DR3J3Zb4p1flrzd1bGImktQhLuRSWmc=
-github.com/velmie/broker/natsjs/v3 v3.0.0 h1:5PB++nj05Nq2pGt6oRzXFrb0cfLvoGyLMKw0aZoIexE=
+github.com/velmie/broker/natsjs/v3 v3.0.0 h1:9D9H6Rdf/eRtZwJFFeytoJpwoeVbLBKUTmokMVzUuwE=
 github.com/velmie/broker/natsjs/v3 v3.0.0/go.mod h1:ty8wUBzHXim2bYGccleica9+R1I0hTFjzZ+VR19lUog=
 github.com/velmie/broker/otelbroker v1.0.0 h1:oKwxz+Fs3F3L14hrsJAlySOc2snKuBIOr42GD9xJFOc=
 github.com/velmie/broker/otelbroker v1.0.0/go.mod h1:H+2XxI9U18TiSJBdPabpKvuBzcQoDpMkagtk9NkB8yE=
-github.com/velmie/broker/sns v1.0.0 h1:jn3thMGvuZ0PbLI2+gIniOedLT4DPhQBBvxPCtoOM8s=
+github.com/velmie/broker/sns v1.0.0 h1:YbUHANddpRl1FAb7HqTyPUkN5a6drD1UEr6jj8LQrs4=
 github.com/velmie/broker/sns v1.0.0/go.mod h1:Kt51CNK//b2z8zNWP48+084J65vg9dE/nNsJXXarfjs=
-github.com/velmie/broker/sqs v1.0.0 h1:ITjkC/0NBnuELIkTKcMg6Cs7M8kBv3cBNV9+oIqotsQ=
+github.com/velmie/broker/sqs v1.0.0 h1:eJJW/ifcosFIZncrLAXUr/3PRoNwLfJlte276nlwqtk=
 github.com/velmie/broker/sqs v1.0.0/go.mod h1:hXKwUW0C4h0uCAnJ1xQFXa5PK1eQby8bJDFv4B6bOZc=
 github.com/velmie/idempo v0.2.0 h1:SXJ2/+4wq7gTnN/Lb5lEzuqOgLftXbfI0VK4rwWiKfA=
 github.com/velmie/idempo v0.2.0/go.mod h1:OFIGpf6Owzs7JtK1yuJoTCif9/qOBjPT4PXDXoofQeU=

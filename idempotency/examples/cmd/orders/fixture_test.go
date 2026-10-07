@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -54,5 +56,10 @@ func docker(args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	//nolint:gosec // Test-owned Docker arguments, passed without a shell.
-	return exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+	output, err := exec.CommandContext(ctx, "docker", args...).Output()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		err = fmt.Errorf("Docker operation: %w: %s", err, exit.Stderr)
+	}
+	return output, err
 }
