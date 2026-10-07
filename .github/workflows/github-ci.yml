@@ -28,8 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Unpublished successor adapters are checked with the local core below.
-        module: ['.']
+        module: ['.', 'natsjs', 'sqs', 'sns', 'azuresb', 'idempotency', 'otelbroker', 'idempotency/examples', 'otelbroker/examples']
     defaults:
       run:
         working-directory: ${{ matrix.module }}
