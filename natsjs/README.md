@@ -104,6 +104,10 @@ native map ordering is not retained.
 
 `MetadataReader` exposes a detached native snapshot without acknowledgment
 methods. Attempt counts describe transport deliveries, not business executions.
+`SubjectReader` exposes the actual received subject. Use it for a
+[wildcard guard before decoding](docs/consumers.md#filter-by-the-received-subject).
+`Delivery.Source()` identifies the bound stream and consumer, so it remains the
+same across subjects matched by one filter.
 
 ## Observations and errors
 

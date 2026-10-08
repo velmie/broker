@@ -23,17 +23,25 @@ type TerminationRequirement struct{}
 // authority. Its method is valid during the callback; returned data may be kept.
 type MetadataReader interface{ Metadata() nats.MsgMetadata }
 
+// SubjectReader returns the actual received subject, which may differ between
+// messages matching one wildcard filter. Source still identifies stream/consumer.
+// Read Subject during the callback; the returned string is detached and safe to
+// retain. Reading it grants no acknowledgment authority.
+type SubjectReader interface{ Subject() string }
+
 func (Terminate) DeliveryDisposition()              {}
 func (TerminationRequirement) DeliveryRequirement() {}
 
 type delivery struct {
 	message  broker.Message
 	source   string
+	subject  string
 	metadata nats.MsgMetadata
 }
 
 func (d *delivery) Message() broker.Message    { return d.message }
 func (d *delivery) Source() string             { return d.source }
+func (d *delivery) Subject() string            { return d.subject }
 func (d *delivery) Metadata() nats.MsgMetadata { return d.metadata }
 func (d *delivery) Attempt() broker.Attempt {
 	if d.metadata.NumDelivered == 0 {
@@ -68,5 +76,5 @@ func detach(message *nats.Msg, source string) (*delivery, error) {
 			}
 		}
 	}
-	return &delivery{message: value, source: source, metadata: *metadata}, nil
+	return &delivery{message: value, source: source, subject: message.Subject, metadata: *metadata}, nil
 }

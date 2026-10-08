@@ -173,6 +173,10 @@ its native lifetime and delivery policy intact. `NewConsumer` retains its
 durable-only contract. Both bindings preserve `Source()` as `stream/consumer`,
 and neither changes remote topology. See [per-instance delivery](../natsjs/docs/consumers.md#receive-a-copy-in-each-instance).
 
+For wildcard guards, read the actual subject through `natsjs.SubjectReader`.
+Keep `Delivery.Source()` for its existing source identity. Adding subject access
+does not change Source-based idempotency keys, fingerprints or tracing destinations.
+
 Check stored keys and fingerprints against retained records, and wire metadata
 against existing producers and consumers. Exercise native publication,
 redelivery, reply failure, uncertain settlement and shutdown on the selected

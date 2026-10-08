@@ -84,6 +84,47 @@ and limits. Pending deliveries can become available again under the server's
 redelivery rules. Successful acknowledgment does not make business effects
 exactly once.
 
+## Filter by the received subject
+
+A wildcard filter can receive messages on several subjects. Read the actual
+subject through `natsjs.SubjectReader`. `Source()` keeps the stream/consumer
+identity used by idempotency keys and tracing.
+
+This middleware completes one selected subject before the typed decoder runs:
+
+```go
+package messaging
+
+import (
+	"context"
+	"errors"
+
+	"github.com/velmie/broker"
+	"github.com/velmie/broker/natsjs/v3"
+)
+
+func SkipSubject(subject string) broker.HandlerMiddleware {
+	return broker.HandlerMiddleware{Wrap: func(next broker.HandlerFunc) broker.HandlerFunc {
+		return func(ctx context.Context, delivery broker.Delivery) (broker.Disposition, error) {
+			// The adapter supplies received metadata without settlement methods.
+			reader, ok := delivery.(natsjs.SubjectReader)
+			if !ok {
+				return nil, errors.New("received subject unavailable")
+			}
+			if reader.Subject() == subject {
+				return broker.Handled{}, nil
+			}
+			return next(ctx, delivery)
+		}
+	}}
+}
+```
+
+Attach it with `handler.WithMiddleware(SkipSubject(ownSubject))`. The consumer
+acknowledges skipped messages using the same settlement rules as other handled
+messages. Read `Subject()` during the callback. Its returned string and the
+`MetadataReader.Metadata()` snapshot may be retained after the callback returns.
+
 ## Replace a failed local run
 
 `broker.WithConsumerRecovery` can invoke the factory again after a failed `Run`
