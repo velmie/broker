@@ -38,29 +38,16 @@ type Metadata struct {
 // MetadataReader returns an independently owned native snapshot.
 type MetadataReader interface{ Metadata() Metadata }
 
-type delivery struct {
-	message  broker.Message
-	source   string
-	metadata Metadata
-	attempt  broker.Attempt
-}
-
-func (d *delivery) Message() broker.Message { return d.message }
-func (d *delivery) Source() string          { return d.source }
-func (d *delivery) Attempt() broker.Attempt { return d.attempt }
-func (d *delivery) Metadata() Metadata {
-	snapshot := d.metadata
-	snapshot.ApplicationProperties = make(map[string]any, len(d.metadata.ApplicationProperties))
-	for name, value := range d.metadata.ApplicationProperties {
-		if binary, ok := value.([]byte); ok {
-			value = bytes.Clone(binary)
-		}
-		snapshot.ApplicationProperties[name] = value
-	}
-	return snapshot
-}
-
-func encodeMessage(message broker.Message) (*azservicebus.Message, error) {
+// EncodeMessage validates and detaches a Broker message for native SDK sending,
+// scheduling or batching. An explicit, nonempty UTF-8 logical ID is required and
+// populates both MessageID and the reserved id application property. Header values
+// must be UTF-8 text; callers explicitly encode binary metadata as text. The body
+// may contain arbitrary bytes. No I/O or observation is performed.
+//
+// The caller owns the returned message and may set native controls such as
+// SessionID, Subject and ContentType. Keep MessageID and the reserved id property
+// consistent if changing identity. Input storage is read-only during conversion.
+func EncodeMessage(message broker.Message) (*azservicebus.Message, error) {
 	if message.ID == "" {
 		return nil, messageFieldError("ID", "explicit logical identity is required")
 	}
@@ -87,6 +74,28 @@ func encodeMessage(message broker.Message) (*azservicebus.Message, error) {
 	native.MessageID = &id
 	native.ApplicationProperties[logicalIDProperty] = id
 	return native, nil
+}
+
+type delivery struct {
+	message  broker.Message
+	source   string
+	metadata Metadata
+	attempt  broker.Attempt
+}
+
+func (d *delivery) Message() broker.Message { return d.message }
+func (d *delivery) Source() string          { return d.source }
+func (d *delivery) Attempt() broker.Attempt { return d.attempt }
+func (d *delivery) Metadata() Metadata {
+	snapshot := d.metadata
+	snapshot.ApplicationProperties = make(map[string]any, len(d.metadata.ApplicationProperties))
+	for name, value := range d.metadata.ApplicationProperties {
+		if binary, ok := value.([]byte); ok {
+			value = bytes.Clone(binary)
+		}
+		snapshot.ApplicationProperties[name] = value
+	}
+	return snapshot
 }
 
 func detach(native *azservicebus.ReceivedMessage, source string) (*delivery, error) {

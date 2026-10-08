@@ -34,6 +34,7 @@ success. Middleware that batches asynchronously or retries through repeated
 calls to the next publisher does not satisfy this result contract.
 
 Use ordinary publishing middleware, including tracing, when these rules match
-its behavior. See [NATS acknowledgment and futures](../natsjs/docs/native-publishing.md)
-[SQS request and result access](../sqs/docs/native.md), and
-[SNS native publication](../sns/docs/native.md) for SDK composition.
+its behavior. See [NATS acknowledgment and futures](../natsjs/docs/native-publishing.md),
+[SQS request and result access](../sqs/docs/native.md),
+[SNS native publication](../sns/docs/native.md), and
+[Service Bus scheduling](../azuresb/docs/native.md) for SDK composition.
