@@ -23,6 +23,13 @@ func (e *OperationError) Error() string {
 
 func (e *OperationError) Unwrap() error { return e.Cause }
 
+func operationFailure(source, operation string, cause error) error {
+	if cause == nil {
+		return nil
+	}
+	return &OperationError{Source: source, Operation: operation, Cause: cause}
+}
+
 func fieldFailure(field, reason string, cause error) error {
 	return &broker.FieldError{Field: field, Reason: reason, Cause: cause}
 }

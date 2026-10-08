@@ -1,8 +1,8 @@
 # Native JetStream sessions
 
-These executable examples use the NATS SDK directly for features outside the
-adapter's durable pull profile. Each session owns its native resources, completes
-or joins outstanding work, and then cleans up temporary topology.
+These executable examples combine Broker processing with native JetStream
+configuration and operations. Each session joins its work before cleaning up
+its temporary topology.
 
 ## Run a session
 
@@ -18,8 +18,8 @@ Select one profile with `-profile`:
 | Profile | Demonstrates |
 | --- | --- |
 | `async-publish` | Publication futures, backpressure, per-message acknowledgment and cleanup |
-| `push` | Caller-created push and queue subscriptions, explicit ACK and joined drain |
-| `iterator` | Sequential pull iteration with explicit settlement |
+| `push` | Native push and queue consumers bound through `NewPushConsumer`, with explicit ACK and joined shutdown |
+| `iterator` | Native pull `Fetch`, `NewProcessor` and caller-owned explicit settlement |
 | `policies` | AckNone, AckAll, ordered delivery, BackOff and native delivery controls |
 | `topology` | Stream and consumer provisioning and lifetime |
 | `connection` | Connection readiness, deadlines and cleanup |
@@ -34,10 +34,12 @@ For asynchronous publication, a completed pending queue does not mean every
 message succeeded. Inspect each future. Cleanup resolves outstanding futures,
 but a timed-out request may already have been accepted.
 
-Push callbacks perform their effect before `AckSync`. Draining is asynchronous:
-wait for the subscription's closed notification before deleting topology or
-closing the connection. Iterator callbacks remain sequential; a callback failure
+The push profile waits for `Consumer.Run` to join before deleting topology or
+closing the connection. Broker owns receive, callback, renewal and settlement.
+The iterator profile owns its native subscription and ACK operations.
+`Processor` supplies message mapping and handler execution. A callback failure
 gets no ACK, and a failed terminal operation is not followed by an opposite one.
+See [the ownership guide](../../docs/native-consumption.md).
 
 Native policies have distinct consequences:
 

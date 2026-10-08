@@ -1,2 +1,2 @@
-// Package natsjs binds Broker handlers to existing JetStream pull consumers.
+// Package natsjs connects Broker processing and publication to JetStream.
 package natsjs

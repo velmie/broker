@@ -1,17 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
 
 	"github.com/velmie/broker"
+	"github.com/velmie/broker/natsjs/v3"
 )
 
 const (
@@ -30,13 +29,13 @@ func runPush(ctx context.Context, connection *nats.Conn) (result error) {
 		return err
 	}
 	defer func() { result = errors.Join(result, cleanup()) }()
-	if sessionErr := runPushSession(ctx, js, stream, false); sessionErr != nil {
+	if sessionErr := runPushSession(ctx, connection, js, stream, false); sessionErr != nil {
 		return sessionErr
 	}
-	return runPushSession(ctx, js, stream, true)
+	return runPushSession(ctx, connection, js, stream, true)
 }
 
-func runPushSession(ctx context.Context, js nats.JetStreamContext, stream string, queue bool) (result error) {
+func runPushSession(ctx context.Context, connection *nats.Conn, js nats.JetStreamContext, stream string, queue bool) (result error) {
 	name, group := "push_worker", ""
 	if queue {
 		name, group = "queue_push", "workers"
@@ -49,14 +48,14 @@ func runPushSession(ctx context.Context, js nats.JetStreamContext, stream string
 		return operationError(subject, "create_consumer", err)
 	}
 	progress := &pushProgress{effects: make(map[string]string), signal: make(chan struct{}, 1)}
-	first, err := subscribePush(ctx, js, stream, remote, pushFirstWorker, progress)
+	first, err := startPush(ctx, connection, stream, remote, pushFirstWorker, progress)
 	if err != nil {
 		return err
 	}
-	subscriptions := []pushSubscription{first}
+	runs := []*pushRun{first}
 	defer func() {
-		for _, owned := range subscriptions {
-			result = errors.Join(result, drainPush(owned.subscription, owned.closed))
+		for _, owned := range runs {
+			result = errors.Join(result, owned.stop())
 		}
 		progress.mu.Lock()
 		result = errors.Join(result, errors.Join(progress.failures...))
@@ -71,14 +70,14 @@ func runPushSession(ctx context.Context, js nats.JetStreamContext, stream string
 	if queue {
 		// Two members share the durable. Explicit handoff establishes participation
 		// without requiring a fairness guarantee from the native queue group.
-		second, subscribeErr := subscribePush(ctx, js, stream, remote, pushSecondWorker, progress)
+		if stopErr := first.stop(); stopErr != nil {
+			return stopErr
+		}
+		second, subscribeErr := startPush(ctx, connection, stream, remote, pushSecondWorker, progress)
 		if subscribeErr != nil {
 			return subscribeErr
 		}
-		subscriptions = []pushSubscription{second}
-		if drainErr := drainPush(first.subscription, first.closed); drainErr != nil {
-			return drainErr
-		}
+		runs = []*pushRun{second}
 	}
 	if publishErr := publishPush(ctx, js, subject, secondID); publishErr != nil {
 		return publishErr
@@ -98,8 +97,8 @@ func runPushSession(ctx context.Context, js nats.JetStreamContext, stream string
 	return nil
 }
 
-func subscribePush(ctx context.Context, js nats.JetStreamContext, stream string, remote *nats.ConsumerConfig,
-	worker string, progress *pushProgress) (pushSubscription, error) {
+func startPush(ctx context.Context, connection *nats.Conn, stream string, remote *nats.ConsumerConfig,
+	worker string, progress *pushProgress) (*pushRun, error) {
 	handler := broker.NewTypedHandler(broker.DecodeJSON[pushCommand], func(_ context.Context, command pushCommand) error {
 		progress.mu.Lock()
 		defer progress.mu.Unlock()
@@ -109,33 +108,40 @@ func subscribePush(ctx context.Context, js nats.JetStreamContext, stream string,
 		progress.effects[command.ID] = worker
 		return nil
 	})
-	callback := func(message *nats.Msg) {
-		callbackErr := handlePush(ctx, message, handler)
-		progress.mu.Lock()
-		progress.completed++
-		if callbackErr != nil {
-			progress.failures = append(progress.failures, callbackErr)
-		}
-		progress.mu.Unlock()
-		select {
-		case progress.signal <- struct{}{}:
-		default:
-		}
-	}
-	var subscription *nats.Subscription
-	var err error
-	if remote.DeliverGroup != "" {
-		subscription, err = js.QueueSubscribe(remote.FilterSubject, remote.DeliverGroup, callback,
-			nats.Bind(stream, remote.Durable), nats.ManualAck())
-	} else {
-		subscription, err = js.Subscribe(remote.FilterSubject, callback, nats.Bind(stream, remote.Durable), nats.ManualAck())
-	}
+	consumer, err := natsjs.NewPushConsumer(connection, natsjs.ConsumerConfig{
+		Stream: stream, Consumer: remote.Durable, Subject: remote.FilterSubject,
+		Observer: natsjs.Observer{Record: func(_ context.Context, event natsjs.Observation) {
+			if event.Operation == natsjs.OperationAck && event.Outcome == natsjs.OutcomeConfirmed {
+				progress.mu.Lock()
+				progress.completed++
+				progress.mu.Unlock()
+				progress.notify()
+			}
+		}},
+	})
 	if err != nil {
-		return pushSubscription{}, operationError(remote.FilterSubject, "subscribe", err)
+		return nil, err
 	}
-	closed := make(chan struct{})
-	subscription.SetClosedHandler(func(string) { close(closed) })
-	return pushSubscription{subscription: subscription, closed: closed}, nil
+	runCtx, cancel := context.WithCancel(ctx)
+	owned := &pushRun{cancel: cancel, done: make(chan struct{})}
+	go func() {
+		defer close(owned.done)
+		owned.err = consumer.Run(runCtx, handler)
+		if owned.err != nil && !onlyCancellation(owned.err) {
+			progress.mu.Lock()
+			progress.failures = append(progress.failures, owned.err)
+			progress.mu.Unlock()
+			progress.notify()
+		}
+	}()
+	return owned, nil
+}
+
+func (p *pushProgress) notify() {
+	select {
+	case p.signal <- struct{}{}:
+	default:
+	}
 }
 
 func publishPush(ctx context.Context, js nats.JetStreamContext, subject, id string) error {
@@ -168,62 +174,28 @@ func (p *pushProgress) wait(ctx context.Context, count int) error {
 	}
 }
 
-func handlePush(ctx context.Context, native *nats.Msg, handler broker.Handler) error {
-	if err := context.Cause(ctx); err != nil {
-		return operationError(native.Subject, "process", err)
-	}
-	data := broker.Message{ID: native.Header.Get(nats.MsgIdHdr), Body: bytes.Clone(native.Data)}
-	for name, values := range native.Header {
-		for _, value := range values {
-			data.Headers = append(data.Headers, broker.Header{Name: name, Value: []byte(value)})
-		}
-	}
-	disposition, err := handler.Handle(ctx, &pushDelivery{message: data, source: native.Subject})
-	if err != nil {
-		return operationError(native.Subject, "process", err)
-	}
-	if _, ok := disposition.(broker.Handled); !ok {
-		return operationError(native.Subject, "disposition", fmt.Errorf("push requires Handled, got %T", disposition))
-	}
-	ackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), operationTimeout)
-	defer cancel()
-	if err = native.AckSync(nats.Context(ackCtx)); err != nil {
-		return operationError(native.Subject, "ack", err)
-	}
-	return nil
-}
-
-// Drain starts SDK shutdown asynchronously. The closed hook was installed before
-// publication and stop, so its completion joins every admitted callback.
-func drainPush(subscription *nats.Subscription, closed <-chan struct{}) error {
-	err := subscription.Drain()
-	if err != nil && subscription.IsValid() {
-		err = errors.Join(err, subscription.Unsubscribe())
-	}
-	<-closed
-	if err != nil {
-		return operationError(subscription.Subject, "drain", err)
-	}
-	return nil
-}
-
 type pushCommand struct {
 	ID string `json:"id"`
 }
-type pushSubscription struct {
-	subscription *nats.Subscription
-	closed       chan struct{}
-}
-type pushDelivery struct {
-	message broker.Message
-	source  string
+
+// The application cancels and joins Run; the consumer owns receive and settlement.
+type pushRun struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	err    error
 }
 
-func (d *pushDelivery) Message() broker.Message { return d.message }
-func (d *pushDelivery) Source() string          { return d.source }
+func (s *pushRun) stop() error {
+	s.cancel()
+	<-s.done
+	if onlyCancellation(s.err) {
+		return nil
+	}
+	return s.err
+}
 
 // pushProgress belongs to this fixed two-wave demonstration. It records business
-// effects separately from checked-ACK completion and never blocks an SDK callback.
+// effects separately from checked-ACK completion and never blocks the runtime observer.
 type pushProgress struct {
 	mu        sync.Mutex
 	effects   map[string]string

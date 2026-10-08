@@ -9,6 +9,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/velmie/broker"
+	"github.com/velmie/broker/natsjs/v3"
 )
 
 func TestNativePushProfile(t *testing.T) {
@@ -50,23 +51,18 @@ func TestNativePushDrainJoinsHeldCallback(t *testing.T) {
 		nats.Context(ctx)); err != nil {
 		t.Fatal(err)
 	}
-	entered, release, closed := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	callbackErr := make(chan error, 1)
-	subscription, err := js.Subscribe(subject, func(message *nats.Msg) {
-		callbackErr <- handlePush(ctx,
-			message,
-			broker.NewTypedHandler(broker.DecodeJSON[pushCommand],
-				func(context.Context,
-					pushCommand) error {
-					close(entered)
-					<-release
-					return nil
-				}))
-	}, nats.Bind(stream, "held"), nats.ManualAck())
+	entered, release := make(chan struct{}), make(chan struct{})
+	consumer, err := natsjs.NewPushConsumer(connection, natsjs.ConsumerConfig{Stream: stream, Consumer: "held", Subject: subject})
 	if err != nil {
 		t.Fatal(err)
 	}
-	subscription.SetClosedHandler(func(string) { close(closed) })
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	drained := make(chan error, 1)
+	go func() {
+		drained <- consumer.Run(runCtx, broker.NewTypedHandler(broker.DecodeJSON[pushCommand],
+			func(context.Context, pushCommand) error { close(entered); <-release; return nil }))
+	}()
 	if _, err = js.Publish(subject, []byte(`{"id":"held"}`), nats.Context(ctx)); err != nil {
 		t.Fatal(err)
 	}
@@ -75,8 +71,7 @@ func TestNativePushDrainJoinsHeldCallback(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(context.Cause(ctx))
 	}
-	drained := make(chan error, 1)
-	go func() { drained <- drainPush(subscription, closed) }()
+	stop()
 	select {
 	case err = <-drained:
 		t.Errorf("drain returned before callback joined: %v", err)
@@ -85,14 +80,11 @@ func TestNativePushDrainJoinsHeldCallback(t *testing.T) {
 	close(release)
 	select {
 	case err = <-drained:
-		if err != nil {
+		if !onlyCancellation(err) {
 			t.Error(err)
 		}
 	case <-ctx.Done():
 		t.Fatal(context.Cause(ctx))
-	}
-	if err = <-callbackErr; err != nil {
-		t.Fatal(err)
 	}
 	info, err := js.ConsumerInfo(stream, "held", nats.Context(ctx))
 	if err != nil {
@@ -127,26 +119,16 @@ func TestNativePushApplicationFailureRetainsCauseAndDetachedData(t *testing.T) {
 	}
 	marker := errors.New("application order field rejected")
 	failures := make(chan error, 1)
-	subscription, err := js.Subscribe(subject, func(message *nats.Msg) {
-		failures <- handlePush(ctx, message, broker.NewHandler(func(_ context.Context, delivery broker.Delivery) (broker.Disposition, error) {
-			detached := delivery.Message()
-			message.Data[0] = 'X'
-			message.Header.Set("Example", "mutated")
-			if string(detached.Body) != `{}` || len(detached.Headers) != 1 || string(detached.Headers[0].Value) != "original" {
-				t.Error("push application data aliases native delivery")
-			}
-			return broker.Handled{}, marker
-		}))
-	}, nats.Bind(stream, "rejected"), nats.ManualAck())
+	var retained broker.Delivery
+	consumer, err := natsjs.NewPushConsumer(connection, natsjs.ConsumerConfig{Stream: stream, Consumer: "rejected", Subject: subject})
 	if err != nil {
 		t.Fatal(err)
 	}
-	closed := make(chan struct{})
-	subscription.SetClosedHandler(func(string) { close(closed) })
-	defer func() {
-		if drainErr := drainPush(subscription, closed); drainErr != nil {
-			t.Error(drainErr)
-		}
+	go func() {
+		failures <- consumer.Run(ctx, broker.NewHandler(func(_ context.Context, delivery broker.Delivery) (broker.Disposition, error) {
+			retained = delivery
+			return broker.Handled{}, marker
+		}))
 	}()
 	if _, err = js.PublishMsg(&nats.Msg{Subject: subject, Data: []byte(`{}`),
 		Header: nats.Header{"Example": []string{"original"}}}, nats.Context(ctx)); err != nil {
@@ -159,6 +141,22 @@ func TestNativePushApplicationFailureRetainsCauseAndDetachedData(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal(context.Cause(ctx))
+	}
+	// Detached delivery metadata remains usable after Run and its subscription join.
+	if retained == nil || string(retained.Message().Body) != `{}` || retained.Source() != stream+"/rejected" {
+		t.Fatal("received data or source changed")
+	}
+	if got := retained.(natsjs.SubjectReader).Subject(); got != subject {
+		t.Fatalf("subject = %q", got)
+	}
+	headers := retained.Message().Headers
+	if len(headers) != 1 || headers[0].Name != "Example" || string(headers[0].Value) != "original" {
+		t.Fatalf("received headers changed: %+v", headers)
+	}
+	metadata := retained.(natsjs.MetadataReader).Metadata()
+	metadata.Stream = "changed"
+	if retained.(natsjs.MetadataReader).Metadata().Stream != stream {
+		t.Fatal("metadata aliases caller snapshot")
 	}
 	info, err := js.ConsumerInfo(stream, "rejected", nats.Context(ctx))
 	if err != nil {

@@ -177,6 +177,12 @@ For wildcard guards, read the actual subject through `natsjs.SubjectReader`.
 Keep `Delivery.Source()` for its existing source identity. Adding subject access
 does not change Source-based idempotency keys, fingerprints or tracing destinations.
 
+For existing explicit-ack push or queue consumers, `natsjs.NewPushConsumer` binds
+their native configuration to the same handler and shutdown contract. If the
+application owns a native iterator or callback and settlement, use
+`natsjs.NewProcessor` for mapping and handler execution. It never acknowledges or
+renews messages. Keep settlement under one owner. See [native processing](../natsjs/docs/native-consumption.md).
+
 Check stored keys and fingerprints against retained records, and wire metadata
 against existing producers and consumers. Exercise native publication,
 redelivery, reply failure, uncertain settlement and shutdown on the selected

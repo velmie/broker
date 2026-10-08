@@ -2,7 +2,7 @@
 
 `github.com/velmie/broker/natsjs/v3` connects Broker publishers and handlers to
 NATS JetStream. It publishes to a bound subject and consumes existing named
-pull consumers with explicit acknowledgments. Dependencies are listed in
+pull or push consumers with explicit acknowledgments. Dependencies are listed in
 [go.mod](go.mod).
 
 The application owns the NATS connection and remote topology. Configure a
@@ -35,22 +35,24 @@ func Orders(conn *nats.Conn, stream, consumer, subject string) broker.ConsumerFa
 Register the factory and a handler with a [Coordinator](../docs/coordinator.md).
 `NewConsumer` requires a durable. Use `NewPullConsumer` for a named durable or
 ephemeral consumer, including [one consumer per instance](docs/consumers.md#receive-a-copy-in-each-instance).
-`NewConsumer` validates locally without acquiring a subscription. `Run` checks
-remote configuration, attaches its local pull subscription and releases it after
+`NewPushConsumer` binds a push consumer and uses its native queue group, if any.
+All three constructors validate locally without acquiring a subscription. `Run` checks
+remote configuration, attaches its local subscription and releases it after
 all owned work joins. It does not create, update or delete streams or remote
 consumers. See [consumer progress and ownership](docs/consumers.md).
 
 The remote consumer must use explicit acknowledgments, exactly one
 `FilterSubject` matching `Subject`, and no native `BackOff`. Keep its configuration
-stable during a run. Push, ordered and other native policies are demonstrated in
-[caller-owned SDK sessions](cmd/native/README.md).
+stable during a run. See [native processing and ownership](docs/native-consumption.md)
+when the application should own receive and settlement. Ordered and other native
+policies are demonstrated in [native sessions](cmd/native/README.md).
 
 | Configuration | Meaning |
 | --- | --- |
 | `Stream`, `Consumer`, `Subject` | Required binding; diagnostic source is `stream/consumer` |
 | `Domain` or `APIPrefix` | Optional JetStream management/fetch namespace; mutually exclusive |
-| `BatchSize` | Maximum fetched batch; zero selects one |
-| `FetchTimeout` | Fetch budget; zero selects one second |
+| `BatchSize` | Maximum pull batch; zero selects one; push requires one |
+| `FetchTimeout` | Receive wait budget; zero selects one second |
 | `OperationTimeout` | Startup, renewal and terminal-operation budget; zero selects two seconds |
 | `Shutdown` | [Core shutdown policy](../docs/coordinator.md#shutdown) |
 | `Observer` | Delivery context and native-operation observations |

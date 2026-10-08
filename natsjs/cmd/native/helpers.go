@@ -42,3 +42,22 @@ func operationError(source, operation string, err error) error {
 	}
 	return &natsjs.OperationError{Source: source, Operation: operation, Cause: err}
 }
+
+func onlyCancellation(err error) bool {
+	if err == context.Canceled {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		for _, cause := range causes {
+			if !onlyCancellation(cause) {
+				return false
+			}
+		}
+		return len(causes) > 0
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		return onlyCancellation(cause)
+	}
+	return false
+}
