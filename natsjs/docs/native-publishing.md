@@ -86,3 +86,31 @@ A server rejection retains the native cause through `errors.Is` and `errors.As`.
 Use `broker.DescribeError` with `natsjs.ErrorFields` for safe native codes and
 operation details. A timeout or cancellation can occur after storage. Keep IDs
 stable when the application chooses to retry an uncertain publication.
+
+## Retain asynchronous results
+
+Use a dedicated application-owned JetStream context for a publication session.
+Set its `PublishAsyncMaxPending` and `PublishAsyncTimeout`, and choose a bounded
+`StallWait` for enqueue backpressure. Convert each Broker message with
+`EncodeMessage`, then call `PublishMsgAsync`. Its `PubAckFuture` can be the result
+of `NewTypedPublisherWithResult` just like `*nats.PubAck`.
+
+An async callback checks its supplied context before enqueueing. Native async
+publication does not accept `Context` or `AckWait` options. Cancellation while
+waiting for a future stops that wait; it does not retract publication or resolve
+the future. The native message belongs to that future until completion and
+should remain read-only. Encoding detaches the original Broker data.
+
+Inspect every future's `Ok()` or `Err()` channel. `PublishAsyncComplete` and an
+empty pending count include failures. They do not establish that every message
+was stored. A timeout can also occur after storage. An OTel publication span
+around this callback covers enqueueing, while future acknowledgment remains a
+separate operation.
+
+Stop and join callers that enqueue before cleaning up their session. Call
+`CleanupPublisher` only on the JetStream context owned by that session, then
+inspect outstanding futures. Cleanup reports `ErrJetStreamPublisherClosed` for
+pending futures and releases its reply subscription. It does not close the
+borrowed connection. Keep unrelated publishers in separate JetStream contexts.
+The [async example](../cmd/native/publishing.go) demonstrates success, rejection,
+backpressure, native timeout and pending-future cleanup through this mapping.
