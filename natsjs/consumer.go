@@ -19,12 +19,13 @@ const (
 	defaultOperationTimeout = 2 * time.Second
 )
 
-// Consumer binds an existing durable, explicit-ack JetStream pull consumer.
+// Consumer binds an existing explicit-ack JetStream pull consumer.
 // Each Run processes callbacks sequentially and owns its local subscription.
 // The connection is borrowed and must remain open until all its users join.
 type Consumer struct {
-	conn   *nats.Conn
-	config ConsumerConfig
+	conn           *nats.Conn
+	config         ConsumerConfig
+	allowEphemeral bool
 }
 
 // ConsumerConfig describes the supported pull profile. Stream, Consumer and
@@ -51,7 +52,8 @@ type ConsumerConfig struct {
 	Observer         Observer
 }
 
-// NewConsumer validates local configuration without acquiring receive resources.
+// NewConsumer binds an existing durable pull consumer. It validates local
+// configuration without acquiring receive resources.
 // The required connection must have a positive FlusherTimeout.
 //
 //nolint:gocritic // Copy configuration to keep ownership independent of the caller.
@@ -69,6 +71,23 @@ func NewConsumer(conn *nats.Conn, config ConsumerConfig) (*Consumer, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
+	return c, nil
+}
+
+// NewPullConsumer binds an existing named pull consumer, durable or ephemeral.
+// The remote consumer must use explicit acknowledgments and the supported
+// ConsumerConfig profile. Validation and defaults match NewConsumer.
+// Run owns its local subscription and leaves remote topology and the borrowed
+// connection to the application. An ephemeral consumer's configured inactivity
+// threshold still governs its server-side lifetime after Run stops.
+//
+//nolint:gocritic // Copy configuration to keep ownership independent of the caller.
+func NewPullConsumer(conn *nats.Conn, config ConsumerConfig) (*Consumer, error) {
+	c, err := NewConsumer(conn, config)
+	if err != nil {
+		return nil, err
+	}
+	c.allowEphemeral = true
 	return c, nil
 }
 
@@ -235,10 +254,8 @@ func (c *Consumer) subscribe(parent context.Context, required requirements) (*na
 		return nil, nats.ConsumerConfig{}, err
 	}
 	remote := info.Config
-	if remote.Durable != c.config.Consumer || remote.DeliverSubject != "" || remote.AckPolicy != nats.AckExplicitPolicy {
-		return nil, remote, fieldFailure("Consumer", "incompatible_consumer",
-			errors.New("Consumer: requires an existing durable explicit-ack pull consumer"),
-		)
+	if validationErr := c.validateConsumer(info); validationErr != nil {
+		return nil, remote, validationErr
 	}
 	if remote.FilterSubject != c.config.Subject || len(remote.FilterSubjects) != 0 {
 		return nil, remote, fieldFailure("Subject", "filter_mismatch",
@@ -263,10 +280,27 @@ func (c *Consumer) subscribe(parent context.Context, required requirements) (*na
 	}
 	// ConsumerInfo performed the remote check. Avoid a subscription-lifetime
 	// context and its SDK goroutine. This binding neither creates nor deletes
-	// the durable, and every Fetch supplies its own finite context.
-	subscription, err := js.PullSubscribe(c.config.Subject, c.config.Consumer,
+	// remote consumer, and every Fetch supplies its own finite context. Passing
+	// a durable name for an ephemeral would change the requested native profile.
+	subscription, err := js.PullSubscribe(c.config.Subject, remote.Durable,
 		nats.Bind(c.config.Stream, c.config.Consumer), nats.SkipConsumerLookup(), nats.ManualAck(), nats.AckExplicit())
 	return subscription, remote, err
+}
+
+func (c *Consumer) validateConsumer(info *nats.ConsumerInfo) error {
+	remote := info.Config
+	identityMatches := remote.Durable == c.config.Consumer ||
+		(c.allowEphemeral && remote.Durable == "" && info.Name == c.config.Consumer)
+	if identityMatches && remote.DeliverSubject == "" && remote.AckPolicy == nats.AckExplicitPolicy {
+		return nil
+	}
+	profile := "durable explicit-ack pull consumer"
+	if c.allowEphemeral {
+		profile = "named explicit-ack pull consumer"
+	}
+	return fieldFailure("Consumer", "incompatible_consumer",
+		fmt.Errorf("Consumer: requires an existing %s", profile),
+	)
 }
 
 func validSubject(subject string, filter bool) bool {

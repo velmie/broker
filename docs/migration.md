@@ -167,6 +167,12 @@ The engine lease and native delivery renewal are independent. See
 
 ## Verify the application
 
+For an existing named ephemeral JetStream pull consumer, use
+`natsjs.NewPullConsumer` with its current stream, name and single filter. Leave
+its native lifetime and delivery policy intact. `NewConsumer` retains its
+durable-only contract. Both bindings preserve `Source()` as `stream/consumer`,
+and neither changes remote topology. See [per-instance delivery](../natsjs/docs/consumers.md#receive-a-copy-in-each-instance).
+
 Check stored keys and fingerprints against retained records, and wire metadata
 against existing producers and consumers. Exercise native publication,
 redelivery, reply failure, uncertain settlement and shutdown on the selected

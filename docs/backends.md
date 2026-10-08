@@ -7,7 +7,7 @@ transport.
 
 | Module | Publication | Consumption |
 | --- | --- | --- |
-| [NATS JetStream](../natsjs/README.md) | Subject-bound, waits for a JetStream response | Existing durable pull consumer with explicit acknowledgment |
+| [NATS JetStream](../natsjs/README.md) | Subject-bound, waits for a JetStream response | Existing named pull consumer with explicit acknowledgment |
 | [Amazon SQS](../sqs/README.md) | Queue-bound, waits for `SendMessage` acceptance | Sequential receiving, visibility renewal and deletion |
 | [Amazon SNS](../sns/README.md) | Topic-bound, waits for `Publish` acceptance | Use a downstream adapter, such as SQS |
 | [Azure Service Bus](../azuresb/readme.md) | Bound SDK sender | Queue or subscription receiver in PeekLock or ReceiveAndDelete mode |
