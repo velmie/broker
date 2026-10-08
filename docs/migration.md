@@ -188,6 +188,23 @@ result-returning operation, such as `natsjs.Publisher.PublishWithAck`. Existing
 error-only publishers need no change. Keep native options at the adapter boundary
 through [native publication](../natsjs/docs/native-publishing.md).
 
+SQS and SNS publishers expose `PublishWithResult` for native results and
+`BuildRequest` for per-call SDK controls. Azure's `EncodeMessage` connects Broker
+metadata and bytes to SDK send, batch and scheduling operations. Use the common
+typed result function when that native operation returns a result, such as
+Service Bus scheduling sequence numbers.
+
+For application-owned SQS or Azure receivers, use the adapter's `NewProcessor`
+to retain Broker handlers and middleware. The application then owns renewal,
+settlement and shutdown. In Azure, preserve the original received SDK object for
+completion or deferral, and renew session locks through the session receiver.
+See the [native access and ownership table](backends.md#native-composition).
+
+These entry points are additive. Existing core v1 and adapter interfaces, source
+identities, wire formats and managed settlement behavior need no migration to
+keep working. Adopt a native path at the application wiring boundary when its
+ownership contract matches the desired operation.
+
 Check stored keys and fingerprints against retained records, and wire metadata
 against existing producers and consumers. Exercise native publication,
 redelivery, reply failure, uncertain settlement and shutdown on the selected
