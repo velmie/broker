@@ -71,26 +71,23 @@ func NewPublisher(client *native.Client, config PublisherConfig) (*Publisher, er
 
 // Publish leaves input unchanged. Nil means SNS accepted the request, not that
 // any subscriber received it. Cancellation can leave native acceptance unknown.
-func (p *Publisher) Publish(ctx context.Context, message broker.Message) (err error) {
-	start := time.Now()
-	operation, outcome := OperationMetadata, OutcomeFailed
-	defer func() {
-		err = errors.Join(err,
-			record(p.config.Observer,
-				ctx,
-				Observation{Source: p.config.Source,
-					Operation: operation,
-					Outcome:   outcome,
-					Duration:  time.Since(start),
-					Err:       err}))
-	}()
+func (p *Publisher) Publish(ctx context.Context, message broker.Message) error {
+	_, err := p.PublishWithResult(ctx, message)
+	return err
+}
+
+// BuildRequest validates and detaches a message into a native request using the
+// topic, FIFO and raw-subscription attribute budget configured on this publisher.
+// It performs no I/O or observation. The caller owns the request and may adjust
+// native controls before calling its SDK client. Native rules govern those changes.
+func (p *Publisher) BuildRequest(message broker.Message) (*native.PublishInput, error) {
 	attrs, err := encodeMessage(message, p.config.RawSQSDelivery)
 	if err != nil {
-		return &OperationError{Source: p.config.Source, Operation: operation, Cause: err}
+		return nil, &OperationError{Source: p.config.Source, Operation: OperationMetadata, Cause: err}
 	}
 	if p.config.FIFO && !validToken(message.ID) {
-		return &OperationError{Source: p.config.Source,
-			Operation: operation,
+		return nil, &OperationError{Source: p.config.Source,
+			Operation: OperationMetadata,
 			Cause: fieldError("ID",
 				"FIFO requires 1..128 printable ASCII characters without spaces")}
 	}
@@ -103,13 +100,36 @@ func (p *Publisher) Publish(ctx context.Context, message broker.Message) (err er
 	if p.config.FIFO {
 		input.MessageDeduplicationId = aws.String(message.ID)
 	}
+	return input, nil
+}
+
+// PublishWithResult returns native acceptance metadata using the same bounded
+// operation and observations as Publish. The result is retained if observation
+// fails after acceptance. Cancellation does not prove the message was unsent.
+func (p *Publisher) PublishWithResult(ctx context.Context, message broker.Message) (output *native.PublishOutput, err error) {
+	start := time.Now()
+	operation, outcome := OperationMetadata, OutcomeFailed
+	defer func() {
+		err = errors.Join(err,
+			record(p.config.Observer,
+				ctx,
+				Observation{Source: p.config.Source,
+					Operation: operation,
+					Outcome:   outcome,
+					Duration:  time.Since(start),
+					Err:       err}))
+	}()
+	input, err := p.BuildRequest(message)
+	if err != nil {
+		return nil, err
+	}
 	callCtx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
 	operation, outcome = OperationPublish, OutcomeAccepted
-	_, err = p.client.Publish(callCtx, input)
+	output, err = p.client.Publish(callCtx, input)
 	if err != nil {
 		outcome = OutcomeUnknown
 		err = &OperationError{Source: p.config.Source, Operation: operation, Cause: err}
 	}
-	return err
+	return output, err
 }

@@ -35,4 +35,5 @@ calls to the next publisher does not satisfy this result contract.
 
 Use ordinary publishing middleware, including tracing, when these rules match
 its behavior. See [NATS acknowledgment and futures](../natsjs/docs/native-publishing.md)
-and [SQS request and result access](../sqs/docs/native.md) for SDK composition.
+[SQS request and result access](../sqs/docs/native.md), and
+[SNS native publication](../sns/docs/native.md) for SDK composition.
