@@ -28,6 +28,14 @@ Native metadata is available through adapter-specific read-only interfaces.
 Keep it at the integration boundary when ordinary application code only needs
 the decoded value. Publication acceptance never proves downstream processing.
 
+## Native composition
+
+`NewTypedPublisherWithResult` keeps metadata resolution, encoding and ordinary
+publisher middleware while returning the operation's native result. The result
+type belongs to the adapter or SDK. Existing `Publisher` and `NewTypedPublisher`
+retain their error-only contracts. See [NATS publication](../natsjs/docs/native-publishing.md)
+for a complete example with ownership and middleware rules.
+
 ## Implement another adapter
 
 Implement `Publisher` for a bound destination and `Consumer` for a bound source.

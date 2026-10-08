@@ -96,7 +96,9 @@ adapter neither applies an opposite disposition nor replays the callback.
 
 `NewPublisher(conn, PublisherConfig{Subject: subject})` binds a destination and
 waits for a JetStream publication response. Calls may run concurrently while
-caller-owned message data remains read-only.
+caller-owned message data remains read-only. `PublishWithAck` also returns the
+native acknowledgment. For SDK options and detached message conversion, see
+[native publication](docs/native-publishing.md).
 
 A nonempty logical ID maps to `Nats-Msg-Id`. A supplied ID header must be unique,
 valid UTF-8 and consistent with `Message.ID`; reserved case aliases are rejected.

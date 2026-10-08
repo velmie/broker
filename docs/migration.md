@@ -183,6 +183,11 @@ application owns a native iterator or callback and settlement, use
 `natsjs.NewProcessor` for mapping and handler execution. It never acknowledges or
 renews messages. Keep settlement under one owner. See [native processing](../natsjs/docs/native-consumption.md).
 
+For publication result inspection, use `NewTypedPublisherWithResult` with a
+result-returning operation, such as `natsjs.Publisher.PublishWithAck`. Existing
+error-only publishers need no change. Keep native options at the adapter boundary
+through [native publication](../natsjs/docs/native-publishing.md).
+
 Check stored keys and fingerprints against retained records, and wire metadata
 against existing producers and consumers. Exercise native publication,
 redelivery, reply failure, uncertain settlement and shutdown on the selected
