@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	"github.com/velmie/broker"
 )
 
 func TestNativePolicies(t *testing.T) {
@@ -60,13 +62,17 @@ func TestNativeCumulativeFailureRemainsUnconfirmed(t *testing.T) {
 	}
 	sentinel := errors.New("effect unavailable")
 	effects := 0
-	err = policyConfirmBatch(ctx, batch, func(*nats.Msg) error {
+	processor, err := policyProcessor(sub, func(broker.Delivery) error {
 		effects++
 		if effects == 2 {
 			return sentinel
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = policyConfirmBatch(ctx, batch, processor)
 	if !errors.Is(err, sentinel) || effects != 2 {
 		t.Fatalf("original failure or sequential stop lost: effects=%d err=%v", effects, err)
 	}

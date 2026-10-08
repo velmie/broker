@@ -20,7 +20,7 @@ Select one profile with `-profile`:
 | `async-publish` | Publication futures, backpressure, per-message acknowledgment and cleanup |
 | `push` | Native push and queue consumers bound through `NewPushConsumer`, with explicit ACK and joined shutdown |
 | `iterator` | Native pull `Fetch`, `NewProcessor` and caller-owned explicit settlement |
-| `policies` | AckNone, AckAll, ordered delivery, BackOff and native delivery controls |
+| `policies` | `Processor` with AckNone, ordered delivery, BackOff and native controls; `ProcessBatch` with caller-owned cumulative ACK |
 | `topology` | Stream and consumer provisioning and lifetime |
 | `connection` | Connection readiness, deadlines and cleanup |
 
@@ -44,8 +44,9 @@ See [the ownership guide](../../docs/native-consumption.md).
 Native policies have distinct consequences:
 
 - AckNone cannot restore a message after an application failure.
-- AckAll acknowledges cumulatively and requires an application policy compatible
-  with the ordering of effects.
+- AckAll acknowledges cumulatively. `ProcessBatch` stops at the first failed
+  effect. The caller confirms only after all preceding effects succeed and stops
+  the session on failure, preventing a later ACK from covering that failure.
 - Ordered consumers are ephemeral, non-queue consumers with AckNone semantics.
 - Native BackOff controls timeout-based redelivery. It is separate from explicit
   delayed NAK and Broker's `RetryAfter`.

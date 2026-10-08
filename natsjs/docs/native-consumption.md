@@ -73,3 +73,51 @@ silently turning them into acknowledgment.
 The [iterator example](../cmd/native/iterator.go) creates a real pull consumer,
 processes each selected message and performs its native ACK. Message mapping
 and requirement validation stay in the library.
+
+## Select a native delivery policy
+
+The same processor accepts messages from native push, pull and ordered
+subscriptions. Configure those subscriptions through the SDK before receiving.
+Their policies determine which operations the caller can perform:
+
+| Native policy | Caller responsibility |
+| --- | --- |
+| AckExplicit | Confirm each successful effect or choose a native redelivery operation |
+| AckNone or ordered | Handle processing failures without assuming acknowledgment-driven redelivery |
+| AckAll | Confirm only a contiguous sequence of successful effects |
+| Multiple filters | Check creation succeeds and preserve the native filters when binding |
+| BackOff | Distinguish timeout redelivery from an explicit delayed NAK |
+
+For AckAll, `ProcessBatch` executes handlers in order and stops at the first
+error. It performs no settlement. A caller processing a contiguous batch may
+confirm its last message only after the batch and all preceding deliveries in
+that consumer have succeeded:
+
+```go
+if err := processor.ProcessBatch(ctx, messages); err != nil {
+	return err // Stop this receive/settlement session without a cumulative ACK.
+}
+if len(messages) > 0 {
+	return messages[len(messages)-1].AckSync(nats.Context(ctx))
+}
+return nil
+```
+
+A later cumulative ACK can also confirm an earlier failed delivery. Do not
+continue this session after a failed batch or use this pattern with gaps in
+processing. Previously completed business effects are not undone.
+
+Multiple filters require server support. If the SDK returns an unsupported
+configuration error, do not start receiving from a partially created consumer.
+Bind successful native configuration without replacing it with a single filter.
+The [policy tests](../processor_policy_integration_test.go) exercise both outcomes
+against the server versions selected by CI.
+
+BackOff applies to an unconfirmed delivery's timeout. `NakWithDelay` sets the
+explicit NAK delay independently. The processor neither renews nor settles the
+message. Long callbacks therefore require a caller-owned renewal policy if the
+selected native mode supports it. Broker-managed consumers retain their own
+validation and settlement guarantees.
+
+The [policy examples](../cmd/native/policies.go) combine native configuration
+with `Processor`, including AckNone, AckAll, ordered delivery and BackOff.

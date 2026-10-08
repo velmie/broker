@@ -61,3 +61,18 @@ func (p *Processor) Process(ctx context.Context, message *nats.Msg) error {
 	}
 	return nil
 }
+
+// ProcessBatch processes messages in slice order and stops on the first error.
+// It performs no native operation, including for an empty batch. An AckAll
+// caller may acknowledge the last message only after the whole batch succeeds
+// and all preceding deliveries in that consumer are known successful. After a
+// failure, stop that receive/settlement session; a later cumulative ACK could
+// otherwise confirm the failed delivery. Earlier business effects are not undone.
+func (p *Processor) ProcessBatch(ctx context.Context, messages []*nats.Msg) error {
+	for _, message := range messages {
+		if err := p.Process(ctx, message); err != nil {
+			return err
+		}
+	}
+	return nil
+}
