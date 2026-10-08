@@ -41,11 +41,8 @@ Pass `otelbroker.TracePublishing` as ordinary middleware when tracing is needed.
 Each call retains its own result. A result can accompany an error from middleware
 that runs after publication, so an error does not imply that nothing was stored.
 
-Wrappers are constructed per call. Keep shared middleware state in the supplied
-closure. Middleware must invoke the next publisher synchronously and once for
-success. Skipping with an error preserves that error. Skipping with success or
-calling twice returns a `PublisherMiddleware` field error. The second call never
-publishes, and swallowing a native failure does not turn it into success.
+See [typed publication and middleware ownership](../../docs/publishing.md) for
+the shared result contract, concurrency and skipped or repeated publications.
 
 ## Choose native options
 

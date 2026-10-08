@@ -58,6 +58,10 @@ func validateBinding(queueURL, source string) error {
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("QueueURL: expected HTTP(S) queue URL without credentials, query or fragment")
 	}
+	return validateSource(source)
+}
+
+func validateSource(source string) error {
 	if source == "" || len(source) > maxSourceLength || strings.IndexFunc(source, func(r rune) bool {
 		allowed := (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._-/", r))
 		return !allowed

@@ -33,8 +33,8 @@ the decoded value. Publication acceptance never proves downstream processing.
 `NewTypedPublisherWithResult` keeps metadata resolution, encoding and ordinary
 publisher middleware while returning the operation's native result. The result
 type belongs to the adapter or SDK. Existing `Publisher` and `NewTypedPublisher`
-retain their error-only contracts. See [NATS publication](../natsjs/docs/native-publishing.md)
-for a complete example with ownership and middleware rules.
+retain their error-only contracts. See [typed publication](publishing.md)
+for result and middleware ownership, with links to adapter examples.
 
 ## Implement another adapter
 
