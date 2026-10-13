@@ -4,9 +4,9 @@ go 1.26.0
 
 require (
 	github.com/nats-io/nats.go v1.54.0
-	github.com/velmie/broker v1.0.0
+	github.com/velmie/broker v1.1.0
 	github.com/velmie/broker/idempotency v1.0.0
-	github.com/velmie/broker/natsjs/v3 v3.0.0
+	github.com/velmie/broker/natsjs/v3 v3.1.0
 	github.com/velmie/idempo v0.2.0
 )
 
