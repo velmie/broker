@@ -19,15 +19,17 @@ const (
 	defaultOperationTimeout = 2 * time.Second
 )
 
-// Consumer binds an existing durable, explicit-ack JetStream pull consumer.
+// Consumer binds an existing explicit-ack JetStream consumer.
 // Each Run processes callbacks sequentially and owns its local subscription.
 // The connection is borrowed and must remain open until all its users join.
 type Consumer struct {
-	conn   *nats.Conn
-	config ConsumerConfig
+	conn           *nats.Conn
+	config         ConsumerConfig
+	allowEphemeral bool
+	push           bool
 }
 
-// ConsumerConfig describes the supported pull profile. Stream, Consumer and
+// ConsumerConfig describes the supported explicit-ack profile. Stream, Consumer and
 // Subject are required. Provisioning and changes to the remote configuration
 // belong to the application and must not race with Run.
 type ConsumerConfig struct {
@@ -39,7 +41,8 @@ type ConsumerConfig struct {
 	// one optional trailing dot, matching the native SDK.
 	Domain    string
 	APIPrefix string
-	// BatchSize bounds each fetched batch. Zero selects one. Waiting messages
+	// BatchSize bounds each fetched pull batch. Zero selects one; push requires
+	// one. Waiting messages
 	// have no keepalive and are left pending when shutdown stops admission.
 	BatchSize int
 	// FetchTimeout and OperationTimeout must be positive, or zero for defaults
@@ -51,7 +54,8 @@ type ConsumerConfig struct {
 	Observer         Observer
 }
 
-// NewConsumer validates local configuration without acquiring receive resources.
+// NewConsumer binds an existing durable pull consumer. It validates local
+// configuration without acquiring receive resources.
 // The required connection must have a positive FlusherTimeout.
 //
 //nolint:gocritic // Copy configuration to keep ownership independent of the caller.
@@ -67,6 +71,42 @@ func NewConsumer(conn *nats.Conn, config ConsumerConfig) (*Consumer, error) {
 	}
 	c := &Consumer{conn: conn, config: config}
 	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// NewPullConsumer binds an existing named pull consumer, durable or ephemeral.
+// The remote consumer must use explicit acknowledgments and the supported
+// ConsumerConfig profile. Validation and defaults match NewConsumer.
+// Run owns its local subscription and leaves remote topology and the borrowed
+// connection to the application. An ephemeral consumer's configured inactivity
+// threshold still governs its server-side lifetime after Run stops.
+//
+//nolint:gocritic // Copy configuration to keep ownership independent of the caller.
+func NewPullConsumer(conn *nats.Conn, config ConsumerConfig) (*Consumer, error) {
+	c, err := NewConsumer(conn, config)
+	if err != nil {
+		return nil, err
+	}
+	c.allowEphemeral = true
+	return c, nil
+}
+
+// NewPushConsumer binds an existing named push consumer with explicit
+// acknowledgments. Run uses the native DeliverGroup when present and processes
+// messages sequentially through an owned synchronous subscription. The native
+// consumer and connection remain application-owned. Configuration, requirements
+// and shutdown follow NewPullConsumer; BatchSize must be one (or zero for default).
+//
+//nolint:gocritic // Keep configuration ownership independent of the caller.
+func NewPushConsumer(conn *nats.Conn, config ConsumerConfig) (*Consumer, error) {
+	c, err := NewPullConsumer(conn, config)
+	if err != nil {
+		return nil, err
+	}
+	c.push = true
+	if err = c.Validate(); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -109,7 +149,7 @@ func (c *Consumer) Run(parent context.Context, handler broker.Handler) (result e
 	run.record(parent, Observation{Operation: OperationStartup, Outcome: OutcomeSucceeded})
 	for run.allowCallback() {
 		ctx, cancel := context.WithTimeout(parent, c.config.FetchTimeout)
-		messages, fetchErr := subscription.Fetch(c.config.BatchSize, nats.Context(ctx))
+		messages, fetchErr := c.receive(ctx, subscription)
 		cancel()
 		if fetchErr != nil {
 			if parent.Err() != nil {
@@ -145,10 +185,7 @@ type requirements struct {
 func (c *Consumer) source() string { return c.config.Stream + "/" + c.config.Consumer }
 
 func (c *Consumer) failure(operation string, err error) error {
-	if err == nil {
-		return nil
-	}
-	return &OperationError{Source: c.source(), Operation: operation, Cause: err}
+	return operationFailure(c.source(), operation, err)
 }
 
 func (c *Consumer) validateConfig() error {
@@ -165,6 +202,9 @@ func (c *Consumer) validateConfig() error {
 	}
 	if c.config.BatchSize < 1 {
 		return fieldFailure("BatchSize", "must_be_positive", errors.New("BatchSize: must be positive"))
+	}
+	if c.push && c.config.BatchSize != 1 {
+		return fieldFailure("BatchSize", "unsupported_push_batch", errors.New("BatchSize: push requires one"))
 	}
 	if c.config.FetchTimeout <= 0 {
 		return fieldFailure("FetchTimeout", "must_be_positive", errors.New("FetchTimeout: must be positive"))
@@ -235,10 +275,8 @@ func (c *Consumer) subscribe(parent context.Context, required requirements) (*na
 		return nil, nats.ConsumerConfig{}, err
 	}
 	remote := info.Config
-	if remote.Durable != c.config.Consumer || remote.DeliverSubject != "" || remote.AckPolicy != nats.AckExplicitPolicy {
-		return nil, remote, fieldFailure("Consumer", "incompatible_consumer",
-			errors.New("Consumer: requires an existing durable explicit-ack pull consumer"),
-		)
+	if validationErr := c.validateConsumer(info); validationErr != nil {
+		return nil, remote, validationErr
 	}
 	if remote.FilterSubject != c.config.Subject || len(remote.FilterSubjects) != 0 {
 		return nil, remote, fieldFailure("Subject", "filter_mismatch",
@@ -261,12 +299,72 @@ func (c *Consumer) subscribe(parent context.Context, required requirements) (*na
 			errors.New("KeepAliveRequirement.Interval: must be shorter than Consumer.AckWait"),
 		)
 	}
+	if c.push {
+		return c.subscribePush(js, &remote)
+	}
 	// ConsumerInfo performed the remote check. Avoid a subscription-lifetime
 	// context and its SDK goroutine. This binding neither creates nor deletes
-	// the durable, and every Fetch supplies its own finite context.
-	subscription, err := js.PullSubscribe(c.config.Subject, c.config.Consumer,
+	// remote consumer, and every Fetch supplies its own finite context. Passing
+	// a durable name for an ephemeral would change the requested native profile.
+	subscription, err := js.PullSubscribe(c.config.Subject, remote.Durable,
 		nats.Bind(c.config.Stream, c.config.Consumer), nats.SkipConsumerLookup(), nats.ManualAck(), nats.AckExplicit())
 	return subscription, remote, err
+}
+
+func (c *Consumer) validateConsumer(info *nats.ConsumerInfo) error {
+	remote := info.Config
+	if c.push && remote.DeliverGroup == "" && info.PushBound {
+		return fieldFailure("Consumer.PushBound", "already_bound", errors.New("non-queue consumer already has a subscription"))
+	}
+	identityMatches := remote.Durable == c.config.Consumer ||
+		(c.allowEphemeral && remote.Durable == "" && info.Name == c.config.Consumer)
+	if identityMatches && (remote.DeliverSubject != "") == c.push && remote.AckPolicy == nats.AckExplicitPolicy {
+		return nil
+	}
+	profile := "durable explicit-ack pull consumer"
+	if c.allowEphemeral {
+		profile = "named explicit-ack pull consumer"
+	}
+	if c.push {
+		profile = "named explicit-ack push consumer"
+	}
+	return fieldFailure("Consumer", "incompatible_consumer",
+		fmt.Errorf("Consumer: requires an existing %s", profile),
+	)
+}
+
+func (c *Consumer) subscribePush(js nats.JetStreamContext, remote *nats.ConsumerConfig) (
+	*nats.Subscription, nats.ConsumerConfig, error,
+) {
+	// The bounded ConsumerInfo call above supplied this snapshot. Reproduce its
+	// receive controls while skipping the SDK's second, context-free lookup.
+	options := []nats.SubOpt{nats.Bind(c.config.Stream, c.config.Consumer), nats.SkipConsumerLookup(),
+		nats.ManualAck(), nats.AckExplicit(), nats.DeliverSubject(remote.DeliverSubject), nats.MaxAckPending(remote.MaxAckPending)}
+	if remote.FlowControl {
+		options = append(options, nats.EnableFlowControl())
+	}
+	if remote.Heartbeat > 0 {
+		options = append(options, nats.IdleHeartbeat(remote.Heartbeat))
+	}
+	var subscription *nats.Subscription
+	var err error
+	if remote.DeliverGroup != "" {
+		subscription, err = js.QueueSubscribeSync(c.config.Subject, remote.DeliverGroup, options...)
+	} else {
+		subscription, err = js.SubscribeSync(c.config.Subject, options...)
+	}
+	return subscription, *remote, err
+}
+
+func (c *Consumer) receive(ctx context.Context, subscription *nats.Subscription) ([]*nats.Msg, error) {
+	if !c.push {
+		return subscription.Fetch(c.config.BatchSize, nats.Context(ctx))
+	}
+	message, err := subscription.NextMsgWithContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return []*nats.Msg{message}, nil
 }
 
 func validSubject(subject string, filter bool) bool {

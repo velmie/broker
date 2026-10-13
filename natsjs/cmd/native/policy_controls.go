@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	"github.com/velmie/broker"
 )
 
 const (
@@ -53,13 +55,22 @@ func policyRate(ctx context.Context, js nats.JetStreamContext) (result error) {
 		return operationError("rate", "subscribe", err)
 	}
 	defer func() { result = errors.Join(result, operationError("rate", "unsubscribe", sub.Unsubscribe())) }()
+	processor, err := policyProcessor(sub, func(delivery broker.Delivery) error {
+		if len(delivery.Message().Body) != len(payload) {
+			return errors.New("rate: incomplete payload")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
 	for i := 0; i < 16; i++ {
 		message, receiveErr := sub.NextMsgWithContext(ctx)
 		if receiveErr != nil {
 			return operationError("rate", "receive", receiveErr)
 		}
-		if len(message.Data) != len(payload) {
-			return errors.New("rate: incomplete payload")
+		if processErr := processor.Process(ctx, message); processErr != nil {
+			return processErr
 		}
 	}
 	if elapsed := time.Since(started); elapsed < 500*time.Millisecond {
@@ -161,13 +172,17 @@ func policyFlow(ctx context.Context, connection *nats.Conn, js nats.JetStreamCon
 			return operationError("flow", "publish", err)
 		}
 	}
+	processor, err := policyProcessor(sub, policyFlowEffect(len(payload)))
+	if err != nil {
+		return err
+	}
 	for i := 0; i < 128; i++ {
 		message, receiveErr := sub.NextMsgWithContext(ctx)
 		if receiveErr != nil {
 			return operationError("flow", "receive", receiveErr)
 		}
-		if len(message.Data) != len(payload) {
-			return errors.New("flow: incomplete payload")
+		if processErr := processor.Process(ctx, message); processErr != nil {
+			return processErr
 		}
 	}
 	if windowErr := policyFlowWindow(ctx, wire); windowErr != nil {
@@ -181,10 +196,7 @@ func policyFlow(ctx context.Context, connection *nats.Conn, js nats.JetStreamCon
 	if err != nil {
 		return operationError("flow", "receive-after-window", err)
 	}
-	if string(message.Data) != "continued" {
-		return errors.New("flow: delivery did not continue after protocol window")
-	}
-	return nil
+	return processor.Process(ctx, message)
 }
 
 func policyFlowWindow(ctx context.Context, wire *nats.Subscription) error {
@@ -235,4 +247,20 @@ func verifyResourceLimits(c *nats.ConsumerConfig) error {
 	}
 
 	return nil
+}
+
+// The fixed example expects its payload window followed by one continuation marker.
+func policyFlowEffect(payloadBytes int) func(broker.Delivery) error {
+	effects := 0
+	return func(delivery broker.Delivery) error {
+		body := delivery.Message().Body
+		if effects < 128 && len(body) != payloadBytes {
+			return errors.New("flow: incomplete payload")
+		}
+		if effects == 128 && string(body) != "continued" {
+			return errors.New("flow: delivery did not continue after protocol window")
+		}
+		effects++
+		return nil
+	}
 }

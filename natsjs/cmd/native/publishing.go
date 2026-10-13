@@ -6,9 +6,13 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	"github.com/velmie/broker"
+	"github.com/velmie/broker/natsjs/v3"
 )
 
 const (
+	asyncFirstID       = "first-event"
 	asyncMaxPending    = 2
 	asyncRetryAttempts = 2
 	asyncStallBudget   = 20 * time.Millisecond
@@ -38,7 +42,8 @@ func runAsyncPublish(ctx context.Context, conn *nats.Conn) (result error) {
 
 func publishExpectations(ctx context.Context, js nats.JetStreamContext, stream string) error {
 	subject := stream + ".events"
-	first, err := js.PublishAsync(subject, []byte("first"), nats.MsgId("first"), nats.ExpectStream(stream), nats.ExpectLastSequence(0))
+	first, err := publishAsync(js, subject, broker.Message{ID: asyncFirstID, Body: []byte("first")},
+		nats.ExpectStream(stream), nats.ExpectLastSequence(0))
 	if err != nil {
 		return operationError(stream, "publish-first", err)
 	}
@@ -50,9 +55,8 @@ func publishExpectations(ctx context.Context, js nats.JetStreamContext, stream s
 		return operationError(stream, "ack-first", errors.New("unexpected stream or sequence"))
 	}
 	second,
-		err := js.PublishAsync(subject,
-		[]byte("second"),
-		nats.ExpectLastMsgId("first"),
+		err := publishAsync(js, subject, broker.Message{Body: []byte("second")},
+		nats.ExpectLastMsgId(asyncFirstID),
 		nats.ExpectLastSequence(1),
 		nats.ExpectLastSequencePerSubject(1))
 	if err != nil {
@@ -61,7 +65,7 @@ func publishExpectations(ctx context.Context, js nats.JetStreamContext, stream s
 	if _, err = awaitPublish(ctx, second); err != nil {
 		return operationError(stream, "ack-next", err)
 	}
-	rejected, err := js.PublishAsync(subject, []byte("rejected"), nats.ExpectStream("missing-stream"))
+	rejected, err := publishAsync(js, subject, broker.Message{Body: []byte("rejected")}, nats.ExpectStream("missing-stream"))
 	if err != nil {
 		return operationError(stream, "publish-expectation", err)
 	}
@@ -81,7 +85,7 @@ func publishExpectations(ctx context.Context, js nats.JetStreamContext, stream s
 
 func publishNoResponderRetry(ctx context.Context, js nats.JetStreamContext) error {
 	started := time.Now()
-	future, err := js.PublishAsync(nats.NewInbox(), []byte("no-stream"), nats.RetryAttempts(asyncRetryAttempts),
+	future, err := publishAsync(js, nats.NewInbox(), broker.Message{Body: []byte("no-stream")}, nats.RetryAttempts(asyncRetryAttempts),
 		nats.RetryWait(asyncRetryWait))
 	if err != nil {
 		return operationError("async-publish", "retry-publish", err)
@@ -113,14 +117,14 @@ func publishPendingLifecycle(ctx context.Context, conn *nats.Conn) (result error
 		return operationError("async-publish", "pending-JetStream", err)
 	}
 	defer js.CleanupPublisher()
-	pending, err := js.PublishAsync(subject, []byte("pending"))
+	pending, err := publishAsync(js, subject, broker.Message{Body: []byte("pending")})
 	if err != nil {
 		return operationError("async-publish", "pending-publish", err)
 	}
 	if _, err = sub.NextMsgWithContext(ctx); err != nil {
 		return operationError("async-publish", "pending-receive", err)
 	}
-	_, err = js.PublishAsync(subject, []byte("stalled"), nats.StallWait(asyncStallBudget))
+	_, err = publishAsync(js, subject, broker.Message{Body: []byte("stalled")}, nats.StallWait(asyncStallBudget))
 	if !errors.Is(err, nats.ErrTooManyStalledMsgs) {
 		return operationError("async-publish", "stall", errors.Join(errors.New("expected pending backpressure"), err))
 	}
@@ -141,7 +145,7 @@ func publishNativeTimeout(ctx context.Context, conn *nats.Conn, subject string) 
 		return operationError("async-publish", "timeout-JetStream", err)
 	}
 	defer js.CleanupPublisher()
-	future, err := js.PublishAsync(subject, []byte("timeout"))
+	future, err := publishAsync(js, subject, broker.Message{Body: []byte("timeout")})
 	if err != nil {
 		return operationError("async-publish", "timeout-publish", err)
 	}
@@ -161,4 +165,13 @@ func awaitPublish(ctx context.Context, future nats.PubAckFuture) (*nats.PubAck, 
 	case <-ctx.Done():
 		return nil, context.Cause(ctx)
 	}
+}
+
+// Encoding detaches Broker data; native options and each future remain caller-owned.
+func publishAsync(js nats.JetStreamContext, subject string, message broker.Message, options ...nats.PubOpt) (nats.PubAckFuture, error) {
+	native, err := natsjs.EncodeMessage(subject, message)
+	if err != nil {
+		return nil, err
+	}
+	return js.PublishMsgAsync(native, options...)
 }

@@ -54,17 +54,44 @@ func NewPublisher(conn *nats.Conn, config PublisherConfig) (*Publisher, error) {
 // because the SDK sanitizes them. Nats-Msg-Id must be unambiguous, canonical and
 // agree with Message.ID. The caller's storage is never modified.
 func (p *Publisher) Publish(ctx context.Context, message broker.Message) error {
+	_, err := p.PublishWithAck(ctx, message)
+	return err
+}
+
+// PublishWithAck has Publish's bound destination, identity and timeout contract
+// and also returns the native storage acknowledgment. It does not imply that a
+// consumer processed the message. Errors can leave publication unknown.
+// For native per-call options or asynchronous publication, use EncodeMessage
+// with an application-owned JetStream context.
+func (p *Publisher) PublishWithAck(ctx context.Context, message broker.Message) (*nats.PubAck, error) {
 	if err := context.Cause(ctx); err != nil {
-		return p.failure(err)
+		return nil, p.failure(err)
 	}
-	headers, err := publishHeaders(message)
+	native, err := EncodeMessage(p.config.Subject, message)
 	if err != nil {
-		return p.failure(err)
+		return nil, p.failure(err)
 	}
 	bounded, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
-	_, err = p.js.PublishMsg(&nats.Msg{Subject: p.config.Subject, Header: headers, Data: message.Body}, nats.Context(bounded))
-	return p.failure(err)
+	ack, err := p.js.PublishMsg(native, nats.Context(bounded))
+	return ack, p.failure(err)
+}
+
+// EncodeMessage validates Broker's NATS mapping and returns a native message
+// with detached body and headers. The caller owns this message and its SDK
+// operation, options, deadline and result. It acquires no connection or resource.
+// Native options may deliberately override mapped headers, including the logical
+// ID; those changes follow the SDK contract and never change the input Message.
+func EncodeMessage(subject string, message broker.Message) (*nats.Msg, error) {
+	if !validSubject(subject, false) {
+		return nil, operationFailure(subject, "encode", fieldFailure("Subject", "invalid_destination",
+			errors.New("publish Subject: invalid destination")))
+	}
+	headers, err := publishHeaders(message)
+	if err != nil {
+		return nil, operationFailure(subject, "encode", err)
+	}
+	return &nats.Msg{Subject: subject, Header: headers, Data: bytes.Clone(message.Body)}, nil
 }
 
 func (p *Publisher) failure(err error) error {

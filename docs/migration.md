@@ -165,7 +165,53 @@ single-value map and are rejected.
 The engine lease and native delivery renewal are independent. See
 [idempotency limits](../idempotency/README.md#delivery-limits).
 
+## Azure module requirements
+
+Azure adapter v1.1.0 requires Go 1.26 or later because its HTTP/2 dependency
+includes security fixes in `golang.org/x/net` v0.60.0. Upgrade the Go toolchain
+before updating this adapter and use a supported patch release. The core and
+other adapter toolchain requirements remain in their own module manifests.
+See the [Azure dependency manifest](../azuresb/go.mod).
+
 ## Verify the application
+
+For an existing named ephemeral JetStream pull consumer, use
+`natsjs.NewPullConsumer` with its current stream, name and single filter. Leave
+its native lifetime and delivery policy intact. `NewConsumer` retains its
+durable-only contract. Both bindings preserve `Source()` as `stream/consumer`,
+and neither changes remote topology. See [per-instance delivery](../natsjs/docs/consumers.md#receive-a-copy-in-each-instance).
+
+For wildcard guards, read the actual subject through `natsjs.SubjectReader`.
+Keep `Delivery.Source()` for its existing source identity. Adding subject access
+does not change Source-based idempotency keys, fingerprints or tracing destinations.
+
+For existing explicit-ack push or queue consumers, `natsjs.NewPushConsumer` binds
+their native configuration to the same handler and shutdown contract. If the
+application owns a native iterator or callback and settlement, use
+`natsjs.NewProcessor` for mapping and handler execution. It never acknowledges or
+renews messages. Keep settlement under one owner. See [native processing](../natsjs/docs/native-consumption.md).
+
+For publication result inspection, use `NewTypedPublisherWithResult` with a
+result-returning operation, such as `natsjs.Publisher.PublishWithAck`. Existing
+error-only publishers need no change. Keep native options at the adapter boundary
+through [native publication](../natsjs/docs/native-publishing.md).
+
+SQS and SNS publishers expose `PublishWithResult` for native results and
+`BuildRequest` for per-call SDK controls. Azure's `EncodeMessage` connects Broker
+metadata and bytes to SDK send, batch and scheduling operations. Use the common
+typed result function when that native operation returns a result, such as
+Service Bus scheduling sequence numbers.
+
+For application-owned SQS or Azure receivers, use the adapter's `NewProcessor`
+to retain Broker handlers and middleware. The application then owns renewal,
+settlement and shutdown. In Azure, preserve the original received SDK object for
+completion or deferral, and renew session locks through the session receiver.
+See the [native access and ownership table](backends.md#native-composition).
+
+These entry points are additive. Existing core v1 and adapter interfaces, source
+identities, wire formats and managed settlement behavior need no migration to
+keep working. Adopt a native path at the application wiring boundary when its
+ownership contract matches the desired operation.
 
 Check stored keys and fingerprints against retained records, and wire metadata
 against existing producers and consumers. Exercise native publication,

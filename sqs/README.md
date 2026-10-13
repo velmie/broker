@@ -97,6 +97,14 @@ through for standard queues. These settings do not promise exactly-once effects.
 without the receipt handle. `AttemptReader` uses `ApproximateReceiveCount`:
 missing means unknown; malformed or zero values fail with their original cause.
 
+## Native operations
+
+Use `PublishWithResult` to inspect `SendMessageOutput`, or `BuildRequest` to
+combine Broker mapping with native SDK controls. `NewProcessor` connects a
+caller-owned native receive loop to ordinary handlers without visibility changes
+or deletion. See [native SQS operations](docs/native.md) for ownership and typed
+publication examples.
+
 ## Observations
 
 Optional `Observer.Begin` and `Observer.Record` hooks expose delivery context and

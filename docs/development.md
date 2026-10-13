@@ -89,6 +89,10 @@ export AZURESB_TEST_TOPIC='<dedicated topic>'
 export AZURESB_TEST_SUBSCRIPTION='<dedicated subscription>'
 ```
 
+To include native session processing, also set `AZURESB_TEST_SESSION_QUEUE` to
+a dedicated queue configured with sessions enabled. Session tests use their own
+session IDs.
+
 Run from `azuresb`:
 
 ```sh

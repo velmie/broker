@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	"github.com/velmie/broker"
+	"github.com/velmie/broker/natsjs/v3"
 )
 
 const (
@@ -79,6 +82,15 @@ func policyAcknowledgment(ctx context.Context, js nats.JetStreamContext, stream,
 	if mode == policyBackoffMode {
 		return policyBackoff(ctx, sub)
 	}
+	processor, err := policyProcessor(sub, func(delivery broker.Delivery) error {
+		if len(delivery.Message().Body) == 0 {
+			return errors.New("empty effect")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
 	var last *nats.Msg
 	var batch []*nats.Msg
 	var sequence uint64
@@ -95,12 +107,19 @@ func policyAcknowledgment(ctx context.Context, js nats.JetStreamContext, stream,
 			return fmt.Errorf("%s: unexpected ordered effect at %d", mode, i)
 		}
 		sequence = metadata.Sequence.Stream
+		if mode != policyAckAll {
+			// AckNone and ordered consumers have no acknowledgment to send.
+			if processErr := processor.Process(ctx, last); processErr != nil {
+				return processErr
+			}
+		}
 		batch = append(batch, last)
 	}
-	return policyAcknowledgmentState(ctx, sub, mode, batch, sequence)
+	return policyAcknowledgmentState(ctx, sub, mode, batch, sequence, processor)
 }
 
-func policyAcknowledgmentState(ctx context.Context, sub *nats.Subscription, mode string, batch []*nats.Msg, sequence uint64) error {
+func policyAcknowledgmentState(ctx context.Context, sub *nats.Subscription, mode string,
+	batch []*nats.Msg, sequence uint64, processor *natsjs.Processor) error {
 	info, err := sub.ConsumerInfo()
 	if err != nil {
 		return operationError(mode, "consumer-info", err)
@@ -110,12 +129,7 @@ func policyAcknowledgmentState(ctx context.Context, sub *nats.Subscription, mode
 		if info.NumAckPending != 3 || info.AckFloor.Stream != 0 {
 			return fmt.Errorf("ack-all: unconfirmed batch pending=%d floor=%d", info.NumAckPending, info.AckFloor.Stream)
 		}
-		if batchErr := policyConfirmBatch(ctx, batch, func(message *nats.Msg) error {
-			if len(message.Data) == 0 {
-				return errors.New("empty effect")
-			}
-			return nil
-		}); batchErr != nil {
+		if batchErr := policyConfirmBatch(ctx, batch, processor); batchErr != nil {
 			return batchErr
 		}
 		info, err = sub.ConsumerInfo()
@@ -140,6 +154,17 @@ func policyBackoff(ctx context.Context, sub *nats.Subscription) error {
 	if err != nil {
 		return operationError(policyBackoffMode, "first-receive", err)
 	}
+	processor, err := policyProcessor(sub, func(delivery broker.Delivery) error {
+		if len(delivery.Message().Body) == 0 {
+			return errors.New("empty effect")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	// Leave the first delivery unprocessed and unconfirmed. BackOff applies to
+	// its acknowledgment timeout, independently of explicit delayed NAK.
 	started := time.Now()
 	repeated, err := sub.NextMsgWithContext(ctx)
 	if err != nil {
@@ -156,6 +181,9 @@ func policyBackoff(ctx context.Context, sub *nats.Subscription) error {
 	if firstMeta.NumDelivered != 1 || repeatedMeta.NumDelivered != 2 || firstMeta.Sequence.Stream != repeatedMeta.Sequence.Stream ||
 		time.Since(started) < 150*time.Millisecond {
 		return errors.New("backoff: native timeout redelivery was not observed")
+	}
+	if processErr := processor.Process(ctx, repeated); processErr != nil {
+		return processErr
 	}
 	return operationError(policyBackoffMode, "ack", repeated.AckSync(nats.Context(ctx)))
 }
@@ -206,13 +234,24 @@ func policyStart(ctx context.Context, js nats.JetStreamContext, stream, name str
 			return operationError(name, "publish", err)
 		}
 	}
-	for _, expected := range want {
+	index := 0
+	processor, err := policyProcessor(sub, func(delivery broker.Delivery) error {
+		if string(delivery.Message().Body) != want[index] {
+			return fmt.Errorf("%s: expected sequence %s", name, want[index])
+		}
+		index++
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for range want {
 		message, receiveErr := sub.NextMsgWithContext(ctx)
 		if receiveErr != nil {
 			return operationError(name, "receive", receiveErr)
 		}
-		if string(message.Data) != expected {
-			return fmt.Errorf("%s: expected sequence %s", name, expected)
+		if processErr := processor.Process(ctx, message); processErr != nil {
+			return processErr
 		}
 	}
 	if _, err = sub.NextMsg(policyNoExtraWait); !errors.Is(err, nats.ErrTimeout) {
@@ -271,10 +310,20 @@ func policyReplaySpacing(
 	if err != nil {
 		return 0, operationError("replay", "receive-second", err)
 	}
-	if string(first.Data) != "first" || string(second.Data) != "second" {
-		return 0, errors.New("replay: incorrect effects")
+	spacing = time.Since(started)
+	index := 0
+	expected := []string{"first", "second"}
+	processor, err := policyProcessor(sub, func(delivery broker.Delivery) error {
+		if string(delivery.Message().Body) != expected[index] {
+			return errors.New("replay: incorrect effects")
+		}
+		index++
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
-	return time.Since(started), nil
+	return spacing, processor.ProcessBatch(ctx, []*nats.Msg{first, second})
 }
 
 func policyHeaders(ctx context.Context, js nats.JetStreamContext) (result error) {
@@ -296,18 +345,42 @@ func policyHeaders(ctx context.Context, js nats.JetStreamContext) (result error)
 	if err != nil {
 		return operationError("headers", "receive", err)
 	}
-	if len(message.Data) != 0 || message.Header.Get("Event-Type") != policyEventType || message.Header.Get("Nats-Msg-Size") != "7" {
-		return errors.New("headers: body was not removed or metadata was lost")
+	processor, err := policyProcessor(sub, func(delivery broker.Delivery) error {
+		data := delivery.Message()
+		headers := make(map[string]string)
+		for _, header := range data.Headers {
+			headers[header.Name] = string(header.Value)
+		}
+		if len(data.Body) != 0 || headers["Event-Type"] != policyEventType || headers["Nats-Msg-Size"] != "7" {
+			return errors.New("headers: body was not removed or metadata was lost")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	return nil
+	return processor.Process(ctx, message)
 }
 
 // A cumulative acknowledgment is valid only after every effect in this batch.
-func policyConfirmBatch(ctx context.Context, messages []*nats.Msg, effect func(*nats.Msg) error) error {
-	for _, message := range messages {
-		if err := effect(message); err != nil {
-			return operationError("ack-all", "effect", err)
-		}
+func policyConfirmBatch(ctx context.Context, messages []*nats.Msg, processor *natsjs.Processor) error {
+	if err := processor.ProcessBatch(ctx, messages); err != nil {
+		return err
+	}
+	if len(messages) == 0 {
+		return nil
 	}
 	return operationError("ack-all", "ack", messages[len(messages)-1].AckSync(nats.Context(ctx)))
+}
+
+// Each policy retains native settlement ownership. The handler only applies its effect.
+func policyProcessor(sub *nats.Subscription, effect func(broker.Delivery) error) (*natsjs.Processor, error) {
+	info, err := sub.ConsumerInfo()
+	if err != nil {
+		return nil, operationError("policies", "consumer-info", err)
+	}
+	handler := broker.NewHandler(func(_ context.Context, delivery broker.Delivery) (broker.Disposition, error) {
+		return broker.Handled{}, effect(delivery)
+	})
+	return natsjs.NewProcessor(handler, info.Stream+"/"+info.Name)
 }

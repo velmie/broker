@@ -50,7 +50,7 @@ func (p *Publisher) Publish(ctx context.Context, message broker.Message) (err er
 		observer.record(ctx, p.config.Source, operation, outcome, start, err, nil)
 		err = errors.Join(err, observer.err)
 	}()
-	native, err := encodeMessage(message)
+	native, err := EncodeMessage(message)
 	if err != nil {
 		return operationError(p.config.Source, operation, err)
 	}

@@ -138,6 +138,13 @@ ID, delivery count, enqueue time, sequence and initial lock deadline. Its
 exposed. `AttemptReader` uses the SDK's already one-based `DeliveryCount`; zero
 means unknown.
 
+## Native operations
+
+Use `EncodeMessage` for native message properties, batching or scheduling.
+`NewProcessor` lets an application-owned native receiver use ordinary handlers
+while the application chooses settlement and renewal. This includes native
+session and deferred-message workflows. See [native Service Bus composition](docs/native.md).
+
 ## Observations and errors
 
 Observer hooks retain source, operation, outcome, duration and original error or

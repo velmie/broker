@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	"github.com/velmie/broker"
 )
 
 func TestNativeAsyncPublishSession(t *testing.T) {
@@ -39,7 +41,7 @@ func TestNativeFutureFailureRetainsCause(t *testing.T) {
 			t.Error(cleanupErr)
 		}
 	}()
-	future, err := js.PublishAsync(stream+".events", []byte("payload"), nats.ExpectStream("not-the-stream"))
+	future, err := publishAsync(js, stream+".events", broker.Message{Body: []byte("payload")}, nats.ExpectStream("not-the-stream"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +83,7 @@ func TestNativeFutureCleanupResolvesPending(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer js.CleanupPublisher()
-	pending, err := js.PublishAsync(subject, []byte("held"))
+	pending, err := publishAsync(js, subject, broker.Message{Body: []byte("held")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +92,7 @@ func TestNativeFutureCleanupResolvesPending(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	_, err = js.PublishAsync(subject, []byte("blocked"), nats.StallWait(20*time.Millisecond))
+	_, err = publishAsync(js, subject, broker.Message{Body: []byte("blocked")}, nats.StallWait(20*time.Millisecond))
 	if !errors.Is(err, nats.ErrTooManyStalledMsgs) {
 		t.Fatalf("bounded native backpressure: %v", err)
 	}

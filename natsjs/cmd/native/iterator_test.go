@@ -9,6 +9,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/velmie/broker"
+	"github.com/velmie/broker/natsjs/v3"
 )
 
 func TestNativeIteratorProfile(t *testing.T) {
@@ -45,14 +46,13 @@ func TestNativeIteratorCallbackFailureLeavesDeliveryUnconfirmed(t *testing.T) {
 	if _,
 		err = js.AddConsumer(stream,
 		&nats.ConsumerConfig{Durable: durable,
-			DeliverSubject: nats.NewInbox(),
-			FilterSubject:  subject,
-			AckPolicy:      nats.AckExplicitPolicy,
-			AckWait:        time.Minute},
+			FilterSubject: subject,
+			AckPolicy:     nats.AckExplicitPolicy,
+			AckWait:       time.Minute},
 		nats.Context(ctx)); err != nil {
 		t.Fatal(err)
 	}
-	subscription, err := js.SubscribeSync(subject, nats.Bind(stream, durable))
+	subscription, err := js.PullSubscribe(subject, "", nats.Bind(stream, durable))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,12 +65,13 @@ func TestNativeIteratorCallbackFailureLeavesDeliveryUnconfirmed(t *testing.T) {
 		Header: nats.Header{"Example": []string{"original"}}}, nats.Context(ctx)); err != nil {
 		t.Fatal(err)
 	}
-	message, err := subscription.NextMsgWithContext(ctx)
+	messages, err := subscription.Fetch(1, nats.Context(ctx))
 	if err != nil {
 		t.Fatal(err)
 	}
+	message := messages[0]
 	marker := errors.New("application field value rejected")
-	err = handleIterator(ctx, message, broker.NewHandler(func(_ context.Context, delivery broker.Delivery) (broker.Disposition, error) {
+	processor, err := natsjs.NewProcessor(broker.NewHandler(func(_ context.Context, delivery broker.Delivery) (broker.Disposition, error) {
 		detached := delivery.Message()
 		message.Data[0] = 'X'
 		message.Header.Set("Example", "mutated")
@@ -78,7 +79,11 @@ func TestNativeIteratorCallbackFailureLeavesDeliveryUnconfirmed(t *testing.T) {
 			t.Error("iterator application data aliases native message")
 		}
 		return broker.Handled{}, marker
-	}))
+	}), stream+"/"+durable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = handleIterator(ctx, message, processor)
 	if !errors.Is(err, marker) {
 		t.Fatalf("callback cause lost: %v", err)
 	}
@@ -117,30 +122,33 @@ func TestNativeIteratorTerminalFailurePreservesCause(t *testing.T) {
 	if _,
 		err = js.AddConsumer(stream,
 		&nats.ConsumerConfig{Durable: "terminal",
-			DeliverSubject: nats.NewInbox(),
-			FilterSubject:  subject,
-			AckPolicy:      nats.AckExplicitPolicy,
-			AckWait:        time.Minute},
+			FilterSubject: subject,
+			AckPolicy:     nats.AckExplicitPolicy,
+			AckWait:       time.Minute},
 		nats.Context(ctx)); err != nil {
 		t.Fatal(err)
 	}
-	subscription, err := receiving.SubscribeSync(subject, nats.Bind(stream, "terminal"), nats.ManualAck())
+	subscription, err := receiving.PullSubscribe(subject, "", nats.Bind(stream, "terminal"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = js.Publish(subject, []byte(`{}`), nats.Context(ctx)); err != nil {
 		t.Fatal(err)
 	}
-	message, err := subscription.NextMsgWithContext(ctx)
+	messages, err := subscription.Fetch(1, nats.Context(ctx))
 	if err != nil {
 		t.Fatal(err)
 	}
 	effects := 0
-	err = handleIterator(ctx, message, broker.NewHandler(func(context.Context, broker.Delivery) (broker.Disposition, error) {
+	processor, err := natsjs.NewProcessor(broker.NewHandler(func(context.Context, broker.Delivery) (broker.Disposition, error) {
 		effects++
 		receiver.Close()
 		return broker.Handled{}, nil
-	}))
+	}), stream+"/terminal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = handleIterator(ctx, messages[0], processor)
 	if !errors.Is(err, nats.ErrConnectionClosed) || effects != 1 {
 		t.Fatalf("terminal cause/effect lost: %v count=%d", err, effects)
 	}

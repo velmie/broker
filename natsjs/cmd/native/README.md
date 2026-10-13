@@ -1,8 +1,8 @@
 # Native JetStream sessions
 
-These executable examples use the NATS SDK directly for features outside the
-adapter's durable pull profile. Each session owns its native resources, completes
-or joins outstanding work, and then cleans up temporary topology.
+These executable examples combine Broker processing with native JetStream
+configuration and operations. Each session joins its work before cleaning up
+its temporary topology.
 
 ## Run a session
 
@@ -18,9 +18,9 @@ Select one profile with `-profile`:
 | Profile | Demonstrates |
 | --- | --- |
 | `async-publish` | Publication futures, backpressure, per-message acknowledgment and cleanup |
-| `push` | Caller-created push and queue subscriptions, explicit ACK and joined drain |
-| `iterator` | Sequential pull iteration with explicit settlement |
-| `policies` | AckNone, AckAll, ordered delivery, BackOff and native delivery controls |
+| `push` | Native push and queue consumers bound through `NewPushConsumer`, with explicit ACK and joined shutdown |
+| `iterator` | Native pull `Fetch`, `NewProcessor` and caller-owned explicit settlement |
+| `policies` | `Processor` with AckNone, ordered delivery, BackOff and native controls; `ProcessBatch` with caller-owned cumulative ACK |
 | `topology` | Stream and consumer provisioning and lifetime |
 | `connection` | Connection readiness, deadlines and cleanup |
 
@@ -34,16 +34,19 @@ For asynchronous publication, a completed pending queue does not mean every
 message succeeded. Inspect each future. Cleanup resolves outstanding futures,
 but a timed-out request may already have been accepted.
 
-Push callbacks perform their effect before `AckSync`. Draining is asynchronous:
-wait for the subscription's closed notification before deleting topology or
-closing the connection. Iterator callbacks remain sequential; a callback failure
+The push profile waits for `Consumer.Run` to join before deleting topology or
+closing the connection. Broker owns receive, callback, renewal and settlement.
+The iterator profile owns its native subscription and ACK operations.
+`Processor` supplies message mapping and handler execution. A callback failure
 gets no ACK, and a failed terminal operation is not followed by an opposite one.
+See [the ownership guide](../../docs/native-consumption.md).
 
 Native policies have distinct consequences:
 
 - AckNone cannot restore a message after an application failure.
-- AckAll acknowledges cumulatively and requires an application policy compatible
-  with the ordering of effects.
+- AckAll acknowledges cumulatively. `ProcessBatch` stops at the first failed
+  effect. The caller confirms only after all preceding effects succeed and stops
+  the session on failure, preventing a later ACK from covering that failure.
 - Ordered consumers are ephemeral, non-queue consumers with AckNone semantics.
 - Native BackOff controls timeout-based redelivery. It is separate from explicit
   delayed NAK and Broker's `RetryAfter`.

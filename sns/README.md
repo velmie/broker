@@ -35,7 +35,7 @@ infer an account, discover topics or configure subscriptions. See
 selects thirty seconds. Publication supports concurrent calls while input data
 remains read-only.
 
-A nil result means SNS accepted the request. It does not prove forwarding or
+A nil error means SNS accepted the request. It does not prove forwarding or
 processing. A failed or canceled request can leave acceptance unknown.
 
 ## Message mapping
@@ -59,6 +59,13 @@ Set `RawSQSDelivery: true` for a raw SQS route to validate the maximum of ten fi
 attributes, including `id` and middleware metadata. This option does not configure
 the subscription. For raw and JSON notification routes, see
 [SNS to SQS delivery](docs/sqs-delivery.md).
+
+## Native controls and results
+
+`PublishWithResult` returns the SDK acknowledgment. `BuildRequest` exposes the
+validated native request for caller-owned SDK controls. Both compose with
+[typed publication and middleware](docs/native.md). Receiving and settlement
+belong to the downstream transport.
 
 ## Observations
 

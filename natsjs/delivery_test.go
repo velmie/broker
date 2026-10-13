@@ -8,9 +8,10 @@ import (
 
 func TestDetachedDataDoesNotShareSDKStorage(t *testing.T) {
 	native := &nats.Msg{
-		Sub:   &nats.Subscription{},
-		Reply: "$JS.ACK.ORDERS.worker.1.2.3.1.0",
-		Data:  []byte("payload"), Header: nats.Header{"X": []string{"first", "second"}},
+		Sub:     &nats.Subscription{},
+		Reply:   "$JS.ACK.ORDERS.worker.1.2.3.1.0",
+		Subject: "orders.created",
+		Data:    []byte("payload"), Header: nats.Header{"X": []string{"first", "second"}},
 	}
 	delivery, err := detach(native, "ORDERS/worker")
 	if err != nil {
@@ -18,6 +19,7 @@ func TestDetachedDataDoesNotShareSDKStorage(t *testing.T) {
 	}
 	native.Data[0] = '!'
 	native.Header["X"][0] = "changed"
+	native.Subject = "another.subject"
 	message := delivery.Message()
 	if string(message.Body) != "payload" || string(message.Headers[0].Value) != "first" {
 		t.Fatalf("SDK mutation reached application: %#v", message)
@@ -25,6 +27,9 @@ func TestDetachedDataDoesNotShareSDKStorage(t *testing.T) {
 	message.Body[1] = '!'
 	if string(native.Data) != "!ayload" {
 		t.Fatal("application mutation reached SDK data")
+	}
+	if delivery.Subject() != "orders.created" || delivery.Source() != "ORDERS/worker" {
+		t.Fatal("SDK subject mutation changed detached subject or source identity")
 	}
 }
 

@@ -164,7 +164,7 @@ func consumeManaged(ctx context.Context, nc *nats.Conn, config natsjs.ConsumerCo
 			return broker.Handled{}, nil
 		})
 	err = consumer.Run(runCtx, handler)
-	if confirmed && onlyNativeCancellation(err) {
+	if confirmed && onlyCancellation(err) {
 		return nil
 	}
 	return err
@@ -190,23 +190,4 @@ func consumeNative(ctx context.Context, js nats.JetStreamContext, config natsjs.
 	ackCtx, cancel := context.WithTimeout(ctx, operationTimeout)
 	defer cancel()
 	return operationError(config.Stream, "ack_native", messages[0].AckSync(nats.Context(ackCtx)))
-}
-
-func onlyNativeCancellation(err error) bool {
-	if err == context.Canceled {
-		return true
-	}
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		causes := joined.Unwrap()
-		for _, cause := range causes {
-			if !onlyNativeCancellation(cause) {
-				return false
-			}
-		}
-		return len(causes) > 0
-	}
-	if cause := errors.Unwrap(err); cause != nil {
-		return onlyNativeCancellation(cause)
-	}
-	return false
 }
