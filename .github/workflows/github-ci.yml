@@ -109,11 +109,11 @@ jobs:
               "$repository_dir/idempotency" "$repository_dir/idempotency/examples" \
               "$repository_dir/otelbroker/examples"
             # Compose the checked-out module versions for source-level integration.
-            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker@v1.0.0=$repository_dir"
-            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/natsjs/v3@v3.0.0=$repository_dir/natsjs"
-            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/sqs@v1.0.0=$repository_dir/sqs"
-            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/sns@v1.0.0=$repository_dir/sns"
-            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/azuresb@v1.0.0=$repository_dir/azuresb"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker@v1.1.0=$repository_dir"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/natsjs/v3@v3.1.0=$repository_dir/natsjs"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/sqs@v1.1.0=$repository_dir/sqs"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/sns@v1.1.0=$repository_dir/sns"
+            GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/azuresb@v1.1.0=$repository_dir/azuresb"
             GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/idempotency@v1.0.0=$repository_dir/idempotency"
             GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/otelbroker@v1.0.0=$repository_dir/otelbroker"
           )

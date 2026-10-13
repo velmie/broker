@@ -14,11 +14,11 @@ manifests. From the repository root, with no existing `go.work`:
 go work init . ./natsjs ./sqs ./sns ./azuresb ./idempotency ./otelbroker \
   ./idempotency/examples ./otelbroker/examples
 go work edit \
-  -replace=github.com/velmie/broker@v1.0.0=. \
-  -replace=github.com/velmie/broker/natsjs/v3@v3.0.0=./natsjs \
-  -replace=github.com/velmie/broker/sqs@v1.0.0=./sqs \
-  -replace=github.com/velmie/broker/sns@v1.0.0=./sns \
-  -replace=github.com/velmie/broker/azuresb@v1.0.0=./azuresb \
+  -replace=github.com/velmie/broker@v1.1.0=. \
+  -replace=github.com/velmie/broker/natsjs/v3@v3.1.0=./natsjs \
+  -replace=github.com/velmie/broker/sqs@v1.1.0=./sqs \
+  -replace=github.com/velmie/broker/sns@v1.1.0=./sns \
+  -replace=github.com/velmie/broker/azuresb@v1.1.0=./azuresb \
   -replace=github.com/velmie/broker/idempotency@v1.0.0=./idempotency \
   -replace=github.com/velmie/broker/otelbroker@v1.0.0=./otelbroker
 ```
