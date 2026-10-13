@@ -165,6 +165,14 @@ single-value map and are rejected.
 The engine lease and native delivery renewal are independent. See
 [idempotency limits](../idempotency/README.md#delivery-limits).
 
+## Azure module requirements
+
+Azure adapter v1.1.0 requires Go 1.26 or later because its HTTP/2 dependency
+includes security fixes in `golang.org/x/net` v0.60.0. Upgrade the Go toolchain
+before updating this adapter and use a supported patch release. The core and
+other adapter toolchain requirements remain in their own module manifests.
+See the [Azure dependency manifest](../azuresb/go.mod).
+
 ## Verify the application
 
 For an existing named ephemeral JetStream pull consumer, use
