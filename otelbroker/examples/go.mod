@@ -15,7 +15,7 @@ require (
 	github.com/velmie/broker v1.1.0
 	github.com/velmie/broker/azuresb v1.1.0
 	github.com/velmie/broker/idempotency v1.0.0
-	github.com/velmie/broker/natsjs/v3 v3.1.0
+	github.com/velmie/broker/natsjs/v3 v3.2.0
 	github.com/velmie/broker/otelbroker v1.0.0
 	github.com/velmie/broker/sns v1.1.0
 	github.com/velmie/broker/sqs v1.1.0
