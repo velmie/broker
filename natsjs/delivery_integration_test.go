@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -27,7 +28,17 @@ func TestMain(m *testing.M) {
 	if serverImage == "" {
 		serverImage = "nats:2.15.0"
 	}
-	output, err := docker("run", "--rm", "-d", "-p", "127.0.0.1::4222", serverImage, "--jetstream")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	address := listener.Addr().String()
+	if err = listener.Close(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	output, err := docker("run", "--rm", "-d", "-p", address+":4222", serverImage, "--jetstream", "--store_dir", "/data")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "start NATS: %v\n%s", err, output)
 		os.Exit(1)
@@ -170,26 +181,46 @@ func provision(t *testing.T, ackWait time.Duration) (*nats.Conn, nats.JetStreamC
 		t.Fatal(err)
 	}
 	t.Cleanup(nc.Close)
+	js, config := provisionTopology(t, nc, nats.MemoryStorage, &nats.ConsumerConfig{
+		AckWait: ackWait,
+	})
+	return nc, js, config
+}
+
+func provisionTopology(t *testing.T, nc *nats.Conn, storage nats.StorageType,
+	remote *nats.ConsumerConfig,
+) (nats.JetStreamContext, natsjs.ConsumerConfig) {
+	t.Helper()
 	js, err := nc.JetStream(nats.MaxWait(time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
 	name := strings.ReplaceAll(t.Name(), "/", "_")
 	subject := name + ".orders"
-	if _, err = js.AddStream(&nats.StreamConfig{Name: name, Subjects: []string{subject}, Storage: nats.MemoryStorage}); err != nil {
+	if _, err = js.AddStream(&nats.StreamConfig{
+		Name:     name,
+		Subjects: []string{subject},
+		Storage:  storage,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if cleanupErr := js.DeleteStream(name); cleanupErr != nil {
+		if cleanupErr := js.DeleteStream(name); cleanupErr != nil && !errors.Is(cleanupErr, nats.ErrStreamNotFound) {
 			t.Error(cleanupErr)
 		}
 	})
-	remote := &nats.ConsumerConfig{Durable: "worker", FilterSubject: subject, AckPolicy: nats.AckExplicitPolicy, AckWait: ackWait}
+	remote.Durable = "worker"
+	remote.FilterSubject = subject
+	remote.AckPolicy = nats.AckExplicitPolicy
 	if _, err = js.AddConsumer(name, remote); err != nil {
 		t.Fatal(err)
 	}
-	return nc, js, natsjs.ConsumerConfig{
-		Stream: name, Consumer: "worker", Subject: subject, FetchTimeout: 100 * time.Millisecond, OperationTimeout: time.Second,
+	return js, natsjs.ConsumerConfig{
+		Stream:           name,
+		Consumer:         "worker",
+		Subject:          subject,
+		FetchTimeout:     100 * time.Millisecond,
+		OperationTimeout: time.Second,
 	}
 }
 

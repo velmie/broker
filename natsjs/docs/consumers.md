@@ -125,11 +125,35 @@ acknowledges skipped messages using the same settlement rules as other handled
 messages. Read `Subject()` during the callback. Its returned string and the
 `MetadataReader.Metadata()` snapshot may be retained after the callback returns.
 
+## Recover pull receives
+
+`Run` retries recognized pull receive interruptions using the same local
+subscription. The application owns connection reconnect settings and connection
+lifetime. While the connection is reconnecting, `Run` waits without sending
+requests. After any interruption or reconnect, it looks up the bound consumer
+once before the next pull, because some servers leave a pull for a deleted
+consumer unanswered. A missing stream or consumer stops `Run` with the lookup
+error. Each failed attempt selected for retry, including a temporary lookup
+failure, is reported as a fetch observation with `OutcomeInterrupted` and its
+original error.
+
+Connection reconnect limits do not bound an outage of JetStream while the NATS
+connection remains connected. If the management service is unavailable, `Run`
+cannot conclusively distinguish unavailable topology from deleted topology.
+
+A restart that interrupts settlement or renewal can still make `Run` return an
+error. The adapter does not replay the callback or infer that an uncertain
+settlement failed. A supervisor may restart the process, and pending deliveries
+follow the server's redelivery policy.
+
+Push consumers use the native synchronous subscription's reconnect behavior.
+Pull receive recovery does not add a push recovery policy.
+
 ## Replace a failed local run
 
-`broker.WithConsumerRecovery` can invoke the factory again after a failed `Run`
-has joined. A replacement validates and attaches a new local subscription to the
-same durable. It does not reset progress or replay a callback directly.
+`broker.WithConsumerRecovery` can invoke the factory again for application-selected
+failures that escape `Run`, after the failed run has joined. A replacement
+validates and attaches a new local subscription to the same durable. It does not reset progress or replay a callback directly.
 
 The [orders classifier](../cmd/orders/recovery.go) accepts only startup timeouts
 and inspects every independent cause. Processing, renewal, uncertain settlement

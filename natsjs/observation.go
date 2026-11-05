@@ -30,6 +30,9 @@ const (
 	OutcomeCanceled      = "canceled"
 	OutcomeSuppressed    = "suppressed"
 	OutcomeIdle          = "idle"
+	// OutcomeInterrupted marks a pull receive or recovery lookup attempt selected for retry.
+	// Err retains the cause. It does not indicate that Run has failed.
+	OutcomeInterrupted = "interrupted"
 )
 
 // Observer connects instrumentation at its owning adapter boundary. Both hooks
