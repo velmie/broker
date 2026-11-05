@@ -106,6 +106,14 @@ fields that the library cannot infer. See [error handling](error-handling.md).
 complete cause tree and bound replacements. Do not restart blindly after
 uncertain settlement, processing or cleanup failures.
 
+## NATS pull receive recovery
+
+In `natsjs/v3` v3.2, recognized pull receive interruptions are retried within the
+same `Run`. Applications can remove wrappers that restart a run solely for those
+receive interruptions. Observers can distinguish `OutcomeInterrupted` attempts
+from terminal fetch failures. Other errors still require an application-owned
+recovery decision. See [pull receive recovery](../natsjs/docs/consumers.md#recover-pull-receives).
+
 ## Retained idempotency records
 
 The earlier idempotency API used `Event.Topic()` in both the key and default

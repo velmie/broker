@@ -135,7 +135,16 @@ func (c *Consumer) Run(parent context.Context, handler broker.Handler) (result e
 	requirements, _ := parseRequirements(handler.Requirements()) // Validated above.
 	run := newConsumerRun(c, parent)
 	defer func() { result = run.finish(result) }()
-	subscription, remote, err := c.subscribe(parent, requirements)
+	// Capture before startup lookup so a reconnect during binding is checked.
+	pull := pullRecovery{
+		reconnects: c.conn.Stats().Reconnects,
+	}
+	js, err := c.jetStream()
+	var subscription *nats.Subscription
+	var remote nats.ConsumerConfig
+	if err == nil {
+		subscription, remote, err = c.subscribe(parent, js, requirements)
+	}
 	if err != nil {
 		err = c.failure("startup", err)
 		run.record(parent, Observation{Operation: OperationStartup, Outcome: OutcomeFailed, Err: err})
@@ -148,6 +157,14 @@ func (c *Consumer) Run(parent context.Context, handler broker.Handler) (result e
 	}()
 	run.record(parent, Observation{Operation: OperationStartup, Outcome: OutcomeSucceeded})
 	for run.allowCallback() {
+		if !c.push {
+			if err := c.resumePull(parent, run, js, &pull); err != nil {
+				if parent.Err() != nil {
+					break
+				}
+				return c.fetchFailure(parent, run, err)
+			}
+		}
 		ctx, cancel := context.WithTimeout(parent, c.config.FetchTimeout)
 		messages, fetchErr := c.receive(ctx, subscription)
 		cancel()
@@ -159,9 +176,24 @@ func (c *Consumer) Run(parent context.Context, handler broker.Handler) (result e
 				run.record(parent, Observation{Operation: OperationFetch, Outcome: OutcomeIdle})
 				continue
 			}
-			fetchErr = c.failure("fetch", fetchErr)
-			run.record(parent, Observation{Operation: OperationFetch, Outcome: OutcomeFailed, Err: fetchErr})
-			return fetchErr
+			if !c.push {
+				if stopErr := c.pullConnectionError(); stopErr != nil {
+					return c.fetchFailure(parent, run, errors.Join(fetchErr, stopErr))
+				}
+				if retryableFetchError(fetchErr) {
+					run.record(parent, Observation{
+						Operation: OperationFetch,
+						Outcome:   OutcomeInterrupted,
+						Err:       c.failure(OperationFetch, fetchErr),
+					})
+					pull.recovering = true
+					if waitForFetchRetry(parent) != nil {
+						break
+					}
+					continue
+				}
+			}
+			return c.fetchFailure(parent, run, fetchErr)
 		}
 		run.record(parent, Observation{Operation: OperationFetch, Outcome: OutcomeSucceeded})
 		for _, message := range messages {
@@ -186,6 +218,29 @@ func (c *Consumer) source() string { return c.config.Stream + "/" + c.config.Con
 
 func (c *Consumer) failure(operation string, err error) error {
 	return operationFailure(c.source(), operation, err)
+}
+
+// pullConnectionError reports terminal connection states during a pull.
+func (c *Consumer) pullConnectionError() error {
+	switch c.conn.Status() {
+	case nats.CLOSED:
+		return nats.ErrConnectionClosed
+	case nats.DRAINING_SUBS, nats.DRAINING_PUBS:
+		return nats.ErrConnectionDraining
+	default:
+		return nil
+	}
+}
+
+// fetchFailure records a terminal fetch failure and preserves its cause.
+func (c *Consumer) fetchFailure(parent context.Context, run *consumerRun, err error) error {
+	err = c.failure(OperationFetch, err)
+	run.record(parent, Observation{
+		Operation: OperationFetch,
+		Outcome:   OutcomeFailed,
+		Err:       err,
+	})
+	return err
 }
 
 func (c *Consumer) validateConfig() error {
@@ -256,9 +311,7 @@ func parseRequirements(values []broker.Requirement) (requirements, error) {
 	return result, nil
 }
 
-func (c *Consumer) subscribe(parent context.Context, required requirements) (*nats.Subscription, nats.ConsumerConfig, error) {
-	ctx, cancel := context.WithTimeout(parent, c.config.OperationTimeout)
-	defer cancel()
+func (c *Consumer) jetStream() (nats.JetStreamContext, error) {
 	options := []nats.JSOpt{nats.MaxWait(c.config.OperationTimeout)}
 	if c.config.Domain != "" {
 		options = append(options, nats.Domain(c.config.Domain))
@@ -266,10 +319,16 @@ func (c *Consumer) subscribe(parent context.Context, required requirements) (*na
 	if c.config.APIPrefix != "" {
 		options = append(options, nats.APIPrefix(c.config.APIPrefix))
 	}
-	js, err := c.conn.JetStream(options...)
-	if err != nil {
-		return nil, nats.ConsumerConfig{}, err
-	}
+	return c.conn.JetStream(options...)
+}
+
+func (c *Consumer) subscribe(
+	parent context.Context,
+	js nats.JetStreamContext,
+	required requirements,
+) (*nats.Subscription, nats.ConsumerConfig, error) {
+	ctx, cancel := context.WithTimeout(parent, c.config.OperationTimeout)
+	defer cancel()
 	info, err := js.ConsumerInfo(c.config.Stream, c.config.Consumer, nats.Context(ctx))
 	if err != nil {
 		return nil, nats.ConsumerConfig{}, err

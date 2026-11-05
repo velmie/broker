@@ -39,7 +39,8 @@ ephemeral consumer, including [one consumer per instance](docs/consumers.md#rece
 All three constructors validate locally without acquiring a subscription. `Run` checks
 remote configuration, attaches its local subscription and releases it after
 all owned work joins. It does not create, update or delete streams or remote
-consumers. See [consumer progress and ownership](docs/consumers.md).
+consumers. Recognized pull receive interruptions are retried on the same local
+subscription. See [consumer progress and recovery](docs/consumers.md).
 
 The remote consumer must use explicit acknowledgments, exactly one
 `FilterSubject` matching `Subject`, and no native `BackOff`. Keep its configuration
@@ -118,9 +119,11 @@ same across subjects matched by one filter.
 `Observer.Begin` can attach a delivery context while preserving cancellation.
 `Observer.Record` receives source, operation, outcome, duration, disposition and
 original `Err` or retry `Cause`. Processing and later acknowledgment are distinct
-records. Renewal can overlap processing, so hooks must support concurrency and
-return promptly. A panic disables later hooks for that run; already entered
-hooks still join and their failures remain visible.
+records. A fetch with `OutcomeInterrupted` records a pull receive or recovery
+lookup attempt selected for retry and its original error; it does not mean `Run`
+failed. Renewal can overlap processing, so hooks must support concurrency and
+return promptly. A panic disables later hooks for that run; already entered hooks
+still join and their failures remain visible.
 
 `OperationError` and `FieldError` preserve original causes. Pass errors to your
 logging adapter and use `broker.DescribeError` with `natsjs.ErrorFields` to retain

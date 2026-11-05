@@ -6,11 +6,12 @@ import (
 	"github.com/velmie/broker"
 )
 
-// OperationError identifies a failed native binding operation. It preserves its
-// original cause for diagnostics and application-owned recovery classification.
-// A cause can contain application data. Logging adapters must inspect and redact
-// it before serialization, preserving safe operation, source and field details.
-// Neither the operation nor the cause alone establishes that retry is safe.
+// OperationError identifies a failed native operation and preserves its original
+// cause. Run handles recognized pull receive interruptions internally. An error
+// returned by Run does not by itself establish that restarting the run or
+// replaying a delivery is safe. A cause can contain application data. Logging
+// adapters must inspect and redact it before serialization, preserving safe
+// operation, source and field details.
 type OperationError struct {
 	Source    string
 	Operation string
