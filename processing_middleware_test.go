@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -39,8 +40,8 @@ func TestRecoverPanicsRetainsCauseAndStackWithoutRetry(t *testing.T) {
 				t.Fatal("panic error cause lost")
 			}
 		}
-		if strings.Contains(err.Error(), "secret") {
-			t.Fatalf("panic diagnostics exposed value: %v", err)
+		if value != nil && !strings.Contains(err.Error(), fmt.Sprint(value)) {
+			t.Fatalf("panic value missing: %v", err)
 		}
 		assertProcessingRequirements(t, handler)
 	}

@@ -93,10 +93,12 @@ such as requiring a positive quantity, belongs in the application function.
 
 Create the native SDK client and provision the queue, stream or subscription in
 your application. Bind a publisher to a destination and a consumer to a source.
-Register a consumer factory and its handler with `Coordinator`, then call `Run(ctx)`.
-Cancel the context to stop receiving, wait for `Run` to return, and only then
+Register a consumer factory and its handler with `Coordinator`, then call `RunService(ctx)`
+when all registrations support it. Cancel the context to stop receiving, wait for
+`RunService` to return, and only then
 close the SDK client. The [order wiring](natsjs/cmd/orders/main.go) shows this
-lifecycle end to end.
+lifecycle end to end. See the [coordinator guide](docs/coordinator.md) for
+supported adapters and the existing `Run` result contract.
 
 Add policies where the application needs them:
 
@@ -115,11 +117,9 @@ be redelivered, so application effects must tolerate duplicates.
 
 ## Diagnostics
 
-`LogProcessing` records callback failures through `slog`. Use `DescribeError` at
-your logger's serialization boundary to retain error types, causes, stages and
-fields without arbitrary error text. Application and adapter describers add safe
-details for their own errors. Your logging adapter owns redaction of
-application-specific data. See the [configured logger](natsjs/cmd/native/diagnostics.go).
+`LogProcessing` records callback failures through `slog`. Adapter observers
+report subsequent native operations. Pass the original error to the logger to
+retain the operation and cause text. See [error handling](docs/error-handling.md).
 
 ## Modules
 

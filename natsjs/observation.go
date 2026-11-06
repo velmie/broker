@@ -76,15 +76,15 @@ type Observation struct {
 	Err         error
 }
 
-// ObserverPanicError preserves instrumentation panic evidence without formatting
-// arbitrary values into logs. Value requires application-aware redaction.
+// ObserverPanicError preserves an instrumentation panic. Error includes the
+// panic value and its type. Error-valued panics remain available through Unwrap.
 type ObserverPanicError struct {
 	Operation string
 	Value     any
 }
 
 func (e *ObserverPanicError) Error() string {
-	return fmt.Sprintf("observer %s panic (%T)", e.Operation, e.Value)
+	return fmt.Sprintf("observer %s panic (%T): %v", e.Operation, e.Value, e.Value)
 }
 func (e *ObserverPanicError) Unwrap() error { cause, _ := e.Value.(error); return cause }
 

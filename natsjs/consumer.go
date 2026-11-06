@@ -126,14 +126,29 @@ func (c *Consumer) Validate(requirements ...broker.Requirement) error {
 // Run joins callbacks, renewal, shutdown observation and subscription cleanup.
 // Cancellation requests the configured policy and is retained in the result.
 func (c *Consumer) Run(parent context.Context, handler broker.Handler) (result error) {
+	return c.run(parent, handler, false)
+}
+
+// RunService joins the same work as Run, but a parent stop alone is successful.
+// Independent failures and an expired shutdown grace period remain errors. A
+// callback returning exactly its delivery context's error after adapter-initiated
+// cancellation cooperates with shutdown. Wrapped or joined errors remain failures.
+func (c *Consumer) RunService(parent context.Context, handler broker.Handler) error {
+	return c.run(parent, handler, true)
+}
+
+func (c *Consumer) run(parent context.Context, handler broker.Handler, service bool) (result error) {
 	if err := c.Validate(handler.Requirements()...); err != nil {
 		return err
 	}
 	if err := context.Cause(parent); err != nil {
+		if service {
+			return newConsumerRun(c, parent, true).finish(nil)
+		}
 		return c.failure("stop", err)
 	}
 	requirements, _ := parseRequirements(handler.Requirements()) // Validated above.
-	run := newConsumerRun(c, parent)
+	run := newConsumerRun(c, parent, service)
 	defer func() { result = run.finish(result) }()
 	// Capture before startup lookup so a reconnect during binding is checked.
 	pull := pullRecovery{
@@ -142,10 +157,14 @@ func (c *Consumer) Run(parent context.Context, handler broker.Handler) (result e
 	js, err := c.jetStream()
 	var subscription *nats.Subscription
 	var remote nats.ConsumerConfig
+	var startupStopped bool
 	if err == nil {
-		subscription, remote, err = c.subscribe(parent, js, requirements)
+		subscription, remote, startupStopped, err = c.subscribe(parent, js, requirements)
 	}
 	if err != nil {
+		if service && startupStopped {
+			return nil
+		}
 		err = c.failure("startup", err)
 		run.record(parent, Observation{Operation: OperationStartup, Outcome: OutcomeFailed, Err: err})
 		return err
@@ -156,56 +175,96 @@ func (c *Consumer) Run(parent context.Context, handler broker.Handler) (result e
 		result = errors.Join(result, err)
 	}()
 	run.record(parent, Observation{Operation: OperationStartup, Outcome: OutcomeSucceeded})
+	return c.consume(parent, run, js, subscription, remote.MaxDeliver, requirements, handler, &pull)
+}
+
+func (c *Consumer) consume(
+	parent context.Context, run *consumerRun, js nats.JetStreamContext, subscription *nats.Subscription,
+	maxDeliver int, required requirements, handler broker.Handler, pull *pullRecovery,
+) error {
 	for run.allowCallback() {
 		if !c.push {
-			if err := c.resumePull(parent, run, js, &pull); err != nil {
-				if parent.Err() != nil {
+			if err, stopped := c.resumePull(parent, run, js, pull); err != nil {
+				if (!run.service && parent.Err() != nil) || (run.service && stopped) {
 					break
 				}
 				return c.fetchFailure(parent, run, err)
 			}
 		}
-		ctx, cancel := context.WithTimeout(parent, c.config.FetchTimeout)
+		fetchDeadline := errors.New("fetch deadline")
+		ctx, cancel := context.WithTimeoutCause(parent, c.config.FetchTimeout, fetchDeadline)
 		messages, fetchErr := c.receive(ctx, subscription)
+		fetchStopped := stoppedOperation(parent, ctx, fetchErr, fetchDeadline)
 		cancel()
 		if fetchErr != nil {
-			if parent.Err() != nil {
+			stop, err := c.handleFetchError(parent, run, fetchErr, fetchStopped, pull)
+			if err != nil {
+				return err
+			}
+			if stop {
 				break
 			}
-			if errors.Is(fetchErr, context.DeadlineExceeded) || errors.Is(fetchErr, nats.ErrTimeout) {
-				run.record(parent, Observation{Operation: OperationFetch, Outcome: OutcomeIdle})
-				continue
-			}
-			if !c.push {
-				if stopErr := c.pullConnectionError(); stopErr != nil {
-					return c.fetchFailure(parent, run, errors.Join(fetchErr, stopErr))
-				}
-				if retryableFetchError(fetchErr) {
-					run.record(parent, Observation{
-						Operation: OperationFetch,
-						Outcome:   OutcomeInterrupted,
-						Err:       c.failure(OperationFetch, fetchErr),
-					})
-					pull.recovering = true
-					if waitForFetchRetry(parent) != nil {
-						break
-					}
-					continue
-				}
-			}
-			return c.fetchFailure(parent, run, fetchErr)
+			continue
 		}
-		run.record(parent, Observation{Operation: OperationFetch, Outcome: OutcomeSucceeded})
+		run.record(
+			parent,
+			Observation{
+				Operation: OperationFetch,
+				Outcome:   OutcomeSucceeded,
+			},
+		)
 		for _, message := range messages {
 			if !run.allowCallback() {
 				break
 			}
-			if err := run.process(message, remote.MaxDeliver, requirements, handler); err != nil {
+			if err := run.process(message, maxDeliver, required, handler); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func (c *Consumer) handleFetchError(
+	parent context.Context, run *consumerRun, err error, stopped bool, pull *pullRecovery,
+) (bool, error) {
+	if (!run.service && parent.Err() != nil) || (run.service && stopped) {
+		return true, nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, nats.ErrTimeout) {
+		if run.service && parent.Err() != nil {
+			return true, nil
+		}
+		run.record(
+			parent,
+			Observation{
+				Operation: OperationFetch,
+				Outcome:   OutcomeIdle,
+			},
+		)
+		return false, nil
+	}
+	if run.service && parent.Err() != nil {
+		return false, c.fetchFailure(parent, run, err)
+	}
+	if !c.push {
+		if stopErr := c.pullConnectionError(); stopErr != nil {
+			return false, c.fetchFailure(parent, run, errors.Join(err, stopErr))
+		}
+		if retryableFetchError(err) {
+			run.record(
+				parent,
+				Observation{
+					Operation: OperationFetch,
+					Outcome:   OutcomeInterrupted,
+					Err:       c.failure(OperationFetch, err),
+				},
+			)
+			pull.recovering = true
+			return waitForFetchRetry(parent) != nil, nil
+		}
+	}
+	return false, c.fetchFailure(parent, run, err)
 }
 
 type requirements struct {
@@ -326,40 +385,44 @@ func (c *Consumer) subscribe(
 	parent context.Context,
 	js nats.JetStreamContext,
 	required requirements,
-) (*nats.Subscription, nats.ConsumerConfig, error) {
-	ctx, cancel := context.WithTimeout(parent, c.config.OperationTimeout)
+) (*nats.Subscription, nats.ConsumerConfig, bool, error) {
+	deadline := errors.New("startup deadline")
+	ctx, cancel := context.WithTimeoutCause(parent, c.config.OperationTimeout, deadline)
 	defer cancel()
 	info, err := js.ConsumerInfo(c.config.Stream, c.config.Consumer, nats.Context(ctx))
 	if err != nil {
-		return nil, nats.ConsumerConfig{}, err
+		return nil, nats.ConsumerConfig{}, stoppedOperation(parent, ctx, err, deadline), err
 	}
 	remote := info.Config
 	if validationErr := c.validateConsumer(info); validationErr != nil {
-		return nil, remote, validationErr
+		return nil, remote, false, validationErr
 	}
 	if remote.FilterSubject != c.config.Subject || len(remote.FilterSubjects) != 0 {
-		return nil, remote, fieldFailure("Subject", "filter_mismatch",
+		return nil, remote, false, fieldFailure("Subject", "filter_mismatch",
 			errors.New("consumer Subject: must equal the consumer's single FilterSubject"),
 		)
 	}
 	if len(remote.BackOff) != 0 {
-		return nil, remote, fieldFailure("Consumer.BackOff", "unsupported", errors.New("Consumer.BackOff: unsupported in this profile"))
+		return nil, remote, false, fieldFailure("Consumer.BackOff", "unsupported", errors.New("Consumer.BackOff: unsupported in this profile"))
 	}
 	if remote.MaxRequestBatch > 0 && c.config.BatchSize > remote.MaxRequestBatch {
-		return nil, remote, fieldFailure("BatchSize", "exceeds_max_request_batch", errors.New("BatchSize: exceeds Consumer.MaxRequestBatch"))
+		return nil, remote, false, fieldFailure(
+			"BatchSize", "exceeds_max_request_batch", errors.New("BatchSize: exceeds Consumer.MaxRequestBatch"),
+		)
 	}
 	if remote.MaxRequestExpires > 0 && c.config.FetchTimeout > remote.MaxRequestExpires {
-		return nil, remote, fieldFailure("FetchTimeout", "exceeds_max_request_expires",
+		return nil, remote, false, fieldFailure("FetchTimeout", "exceeds_max_request_expires",
 			errors.New("FetchTimeout: exceeds Consumer.MaxRequestExpires"),
 		)
 	}
 	if required.keepAlive != 0 && required.keepAlive >= remote.AckWait {
-		return nil, remote, fieldFailure("KeepAliveRequirement.Interval", "exceeds_ack_wait",
+		return nil, remote, false, fieldFailure("KeepAliveRequirement.Interval", "exceeds_ack_wait",
 			errors.New("KeepAliveRequirement.Interval: must be shorter than Consumer.AckWait"),
 		)
 	}
 	if c.push {
-		return c.subscribePush(js, &remote)
+		subscription, config, subscribeErr := c.subscribePush(js, &remote)
+		return subscription, config, false, subscribeErr
 	}
 	// ConsumerInfo performed the remote check. Avoid a subscription-lifetime
 	// context and its SDK goroutine. This binding neither creates nor deletes
@@ -367,7 +430,13 @@ func (c *Consumer) subscribe(
 	// a durable name for an ephemeral would change the requested native profile.
 	subscription, err := js.PullSubscribe(c.config.Subject, remote.Durable,
 		nats.Bind(c.config.Stream, c.config.Consumer), nats.SkipConsumerLookup(), nats.ManualAck(), nats.AckExplicit())
-	return subscription, remote, err
+	return subscription, remote, false, err
+}
+
+// stoppedOperation recognizes the SDK's direct context result while retaining
+// an independently expired operation budget, even if the parent also stops.
+func stoppedOperation(parent, operation context.Context, err, deadline error) bool {
+	return err != nil && parent.Err() != nil && err == operation.Err() && context.Cause(operation) != deadline
 }
 
 func (c *Consumer) validateConsumer(info *nats.ConsumerInfo) error {

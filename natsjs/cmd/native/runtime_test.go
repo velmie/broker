@@ -58,7 +58,7 @@ func TestNativeCommandAll(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	var output bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{ReplaceAttr: redactAttribute}))
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
 	if err = run(ctx, nativeServerURL, "all", logger); err != nil {
 		t.Fatal(err)
 	}

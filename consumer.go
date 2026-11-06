@@ -10,6 +10,14 @@ type Consumer interface {
 	Run(context.Context, Handler) error
 }
 
+// ServiceConsumer reports failures of consumer work and cleanup. A parent stop,
+// including a deadline or custom cancellation cause, succeeds when that work
+// and cleanup complete successfully. The method joins owned work before return.
+// A non-nil result must not be discarded merely because it matches cancellation.
+type ServiceConsumer interface {
+	RunService(context.Context, Handler) error
+}
+
 // ConsumerFactory binds a source locally without acquiring resources or starting
 // workers. A nil error requires a non-nil consumer, which owns acquisition and
 // cleanup inside Run.

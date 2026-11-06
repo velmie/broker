@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"log/slog"
@@ -128,10 +129,15 @@ tls {cert_file: "/etc/nats/profile/server.pem", key_file: "/etc/nats/profile/ser
 			t.Fatalf("async permission cause lost: %v", wrapped)
 		}
 		var serialized bytes.Buffer
-		logger := slog.New(slog.NewJSONHandler(&serialized, &slog.HandlerOptions{ReplaceAttr: redactAttribute}))
+		logger := slog.New(slog.NewJSONHandler(&serialized, nil))
 		logger.Error("native asynchronous rejection", slog.Any("error", wrapped))
-		if !strings.Contains(serialized.String(), "permission_violation") || !strings.Contains(serialized.String(), "async-publish") ||
-			strings.Contains(serialized.String(), "private.subject") {
+		var record struct {
+			Error string `json:"error"`
+		}
+		if decodeErr := json.Unmarshal(serialized.Bytes(), &record); decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		if !strings.Contains(record.Error, original.Error()) || !strings.Contains(record.Error, "async-publish") {
 			t.Fatalf("native async diagnostics: %s", serialized.String())
 		}
 

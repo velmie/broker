@@ -163,11 +163,13 @@ func consumeManaged(ctx context.Context, nc *nats.Conn, config natsjs.ConsumerCo
 			}
 			return broker.Handled{}, nil
 		})
-	err = consumer.Run(runCtx, handler)
-	if confirmed && onlyCancellation(err) {
-		return nil
+	if err = consumer.RunService(runCtx, handler); err != nil {
+		return err
 	}
-	return err
+	if !confirmed {
+		return context.Cause(ctx)
+	}
+	return nil
 }
 
 //nolint:gocritic // The command passes its immutable binding as one value.

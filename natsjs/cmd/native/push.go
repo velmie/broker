@@ -126,8 +126,8 @@ func startPush(ctx context.Context, connection *nats.Conn, stream string, remote
 	owned := &pushRun{cancel: cancel, done: make(chan struct{})}
 	go func() {
 		defer close(owned.done)
-		owned.err = consumer.Run(runCtx, handler)
-		if owned.err != nil && !onlyCancellation(owned.err) {
+		owned.err = consumer.RunService(runCtx, handler)
+		if owned.err != nil {
 			progress.mu.Lock()
 			progress.failures = append(progress.failures, owned.err)
 			progress.mu.Unlock()
@@ -178,7 +178,7 @@ type pushCommand struct {
 	ID string `json:"id"`
 }
 
-// The application cancels and joins Run; the consumer owns receive and settlement.
+// The application cancels and joins the run; the consumer owns receive and settlement.
 type pushRun struct {
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -188,9 +188,6 @@ type pushRun struct {
 func (s *pushRun) stop() error {
 	s.cancel()
 	<-s.done
-	if onlyCancellation(s.err) {
-		return nil
-	}
 	return s.err
 }
 

@@ -28,7 +28,7 @@ func main() {
 	url := flag.String("url", nats.DefaultURL, "NATS server URL or native comma-separated URL list")
 	profile := flag.String("profile", "all", "all, async-publish, push, iterator, policies, topology, or connection")
 	flag.Parse()
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{ReplaceAttr: redactAttribute}))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	owner, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	ctx, cancel := context.WithTimeout(owner, commandTimeout)
 	err := run(ctx, *url, *profile, logger)

@@ -58,7 +58,7 @@ func ListenInstance(ctx context.Context, conn *nats.Conn,
 		return err
 	}
 	// Own events complete normally without invoking the business callback.
-	return consumer.Run(ctx, handler.WithMiddleware(broker.SkipOwnMessages(instanceID)))
+	return consumer.RunService(ctx, handler.WithMiddleware(broker.SkipOwnMessages(instanceID)))
 }
 ```
 

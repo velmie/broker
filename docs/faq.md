@@ -35,13 +35,13 @@ promise exactly-once business execution. See [identity](message-identity.md) and
 ## How do middleware and shutdown compose?
 
 The first middleware argument is outermost. Cancel the coordinator's context to
-request shutdown, wait for `Run` to join, then close shared clients. Consumer
+request shutdown, wait for `RunService` to join, then close shared clients. Consumer
 shutdown policies control how admitted callbacks receive cancellation. See
 [middleware](middleware.md) and [coordinator](coordinator.md).
 
 ## Where should transport diagnostics go?
 
 Use the existing structured logger. `LogProcessing` records handler outcomes;
-adapter observers report native operations. `DescribeError` retains structured
-causes at serialization time, with application-specific redaction. See
+adapter observers report native operations. Pass original errors to `slog` so
+their operation and cause remain visible. See
 [error handling](error-handling.md).

@@ -80,8 +80,8 @@ context capped by `PublisherConfig.OperationTimeout` and preserves logical ID
 consistency. Native expectation headers remain available on that path.
 
 A server rejection retains the native cause through `errors.Is` and `errors.As`.
-Use `broker.DescribeError` with `natsjs.ErrorFields` for safe native codes and
-operation details. A timeout or cancellation can occur after storage. Keep IDs
+Pass the original error to `slog` to include its operation and native cause text.
+A timeout or cancellation can occur after storage. Keep IDs
 stable when the application chooses to retry an uncertain publication.
 
 ## Retain asynchronous results
