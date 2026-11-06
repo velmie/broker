@@ -20,18 +20,18 @@ type pullRecovery struct {
 }
 
 // resumePull verifies the consumer after an interruption before receiving again.
-func (c *Consumer) resumePull(parent context.Context, run *consumerRun, js nats.JetStreamContext, state *pullRecovery) error {
+func (c *Consumer) resumePull(parent context.Context, run *consumerRun, js nats.JetStreamContext, state *pullRecovery) (error, bool) {
 	for {
 		switch c.conn.Status() {
 		case nats.CLOSED:
-			return nats.ErrConnectionClosed
+			return nats.ErrConnectionClosed, false
 		case nats.DRAINING_SUBS, nats.DRAINING_PUBS:
-			return nats.ErrConnectionDraining
+			return nats.ErrConnectionDraining, false
 		case nats.CONNECTED:
 		default:
 			state.recovering = true
 			if err := waitForFetchRetry(parent); err != nil {
-				return err
+				return err, true
 			}
 			continue
 		}
@@ -40,16 +40,16 @@ func (c *Consumer) resumePull(parent context.Context, run *consumerRun, js nats.
 			state.recovering = true
 		}
 		if !state.recovering {
-			return nil
+			return nil, false
 		}
-		err := c.probePullConsumer(parent, js)
+		err, stopped := c.probePullConsumer(parent, js)
 		if err == nil {
 			state.recovering = false
 			state.reconnects = current
-			return nil
+			return nil, false
 		}
 		if parent.Err() != nil || !retryableLookupError(err) {
-			return err
+			return err, stopped
 		}
 		run.record(parent, Observation{
 			Operation: OperationFetch,
@@ -57,17 +57,18 @@ func (c *Consumer) resumePull(parent context.Context, run *consumerRun, js nats.
 			Err:       c.failure(OperationFetch, err),
 		})
 		if err := waitForFetchRetry(parent); err != nil {
-			return err
+			return err, true
 		}
 	}
 }
 
 // probePullConsumer looks up the bound consumer with a bounded operation time.
-func (c *Consumer) probePullConsumer(parent context.Context, js nats.JetStreamContext) error {
-	ctx, cancel := context.WithTimeout(parent, c.config.OperationTimeout)
+func (c *Consumer) probePullConsumer(parent context.Context, js nats.JetStreamContext) (error, bool) {
+	deadline := errors.New("recovery lookup deadline")
+	ctx, cancel := context.WithTimeoutCause(parent, c.config.OperationTimeout, deadline)
 	defer cancel()
 	_, err := js.ConsumerInfo(c.config.Stream, c.config.Consumer, nats.Context(ctx))
-	return err
+	return err, stoppedOperation(parent, ctx, err, deadline)
 }
 
 // retryableLookupError identifies temporary consumer lookup failures.

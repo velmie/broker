@@ -118,10 +118,11 @@ func TestReconnectProbeRetriesTemporaryLookupFailure(t *testing.T) {
 				},
 			}
 			js := &consumerInfoStub{errors: []error{temporary, nats.ErrConsumerNotFound}}
-			if err := consumer.probePullConsumer(context.Background(), js); !errors.Is(err, temporary) || !retryableLookupError(err) {
+			if err, _ := consumer.probePullConsumer(context.Background(), js); !errors.Is(err, temporary) || !retryableLookupError(err) {
 				t.Fatalf("temporary lookup: %v", err)
 			}
-			if err := consumer.probePullConsumer(context.Background(), js); !errors.Is(err, nats.ErrConsumerNotFound) || retryableLookupError(err) {
+			err, _ := consumer.probePullConsumer(context.Background(), js)
+			if !errors.Is(err, nats.ErrConsumerNotFound) || retryableLookupError(err) {
 				t.Fatalf("terminal lookup: %v", err)
 			}
 		})

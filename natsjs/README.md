@@ -67,6 +67,31 @@ renewal and remain pending if shutdown stops admission. Keep batches small when
 callbacks may be slow. Operation budgets cooperate with the connection's write
 budget and cannot interrupt unresponsive callbacks or hooks.
 
+## Shutdown results
+
+`RunService` returns `nil` when the parent stops by cancellation, deadline or a
+custom cause and the consumer's work and cleanup succeed. The parent cause is
+available through `context.Cause(parent)` and the stop observation. A configured
+grace period is separate: expiration returns an error matching
+`ErrGracePeriodExceeded`. An independent callback, renewal, startup, receive,
+settlement, cleanup or observer failure remains an error, including a timeout
+concurrent with shutdown.
+
+An immediately canceled callback cooperates when it returns exactly its canceled
+delivery context's `ctx.Err()` after the adapter canceled that context. Wrapped
+or joined callback errors remain failures. This check applies to the final error
+returned by the Broker handler, after middleware. `NewTypedHandler` wraps errors
+from its business callback in a `StageHandle` error, so that wrapped cancellation
+remains a failure. `NewTypedDeliveryHandler` leaves callback errors unwrapped.
+An unadmitted terminal operation is
+suppressed and the delivery remains pending. An admitted operation completes
+under its own budget. A retry or termination cause is not itself a run failure,
+but an actual failed terminal operation retains both causes.
+
+`Run` retains its existing cancellation result. Do not discard a non-nil
+`RunService` result merely because it matches `context.Canceled`. See the
+[coordinator result table](../docs/coordinator.md#shutdown).
+
 ## Delivery decisions
 
 | Handler result or requirement | Native behavior |
@@ -125,10 +150,9 @@ failed. Renewal can overlap processing, so hooks must support concurrency and
 return promptly. A panic disables later hooks for that run; already entered hooks
 still join and their failures remain visible.
 
-`OperationError` and `FieldError` preserve original causes. Pass errors to your
-logging adapter and use `broker.DescribeError` with `natsjs.ErrorFields` to retain
-native codes and safe operation context. Application errors still need
-application-aware redaction. See [structured diagnostics](../docs/error-handling.md#structured-diagnostics).
+`OperationError` and `FieldError` preserve original causes. Pass original errors
+to `slog` to include their operation and cause text. See
+[structured diagnostics](../docs/error-handling.md#structured-diagnostics).
 
 ## Run the example
 

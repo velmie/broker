@@ -20,6 +20,7 @@ var ErrGracePeriodExceeded = errors.New("shutdown grace period expired")
 type consumerRun struct {
 	consumer  *Consumer
 	parent    context.Context
+	service   bool
 	work      context.Context
 	cancel    context.CancelCauseFunc
 	done      chan struct{}
@@ -29,9 +30,20 @@ type consumerRun struct {
 	mu                sync.Mutex
 	stopped           bool
 	stopAt            time.Time
+	shutdown          *shutdownCause
+	graceExpired      bool
 	observationMu     sync.Mutex
 	observationErrors []error
 }
+
+// shutdownCause identifies cancellation initiated by this run, including when
+// an observer's derived context could have been canceled independently.
+type shutdownCause struct {
+	cause error
+}
+
+func (e *shutdownCause) Error() string { return "consumer shutdown: " + e.cause.Error() }
+func (e *shutdownCause) Unwrap() error { return e.cause }
 
 type renewal struct {
 	mu       sync.Mutex
@@ -41,10 +53,17 @@ type renewal struct {
 	err      error
 }
 
-func newConsumerRun(consumer *Consumer, parent context.Context) *consumerRun {
+func newConsumerRun(consumer *Consumer, parent context.Context, service bool) *consumerRun {
 	work, cancel := context.WithCancelCause(context.WithoutCancel(parent))
-	run := &consumerRun{consumer: consumer, parent: parent, work: work, cancel: cancel,
-		done: make(chan struct{}), watchDone: make(chan struct{})}
+	run := &consumerRun{
+		consumer:  consumer,
+		parent:    parent,
+		service:   service,
+		work:      work,
+		cancel:    cancel,
+		done:      make(chan struct{}),
+		watchDone: make(chan struct{}),
+	}
 	go run.watch()
 	return run
 }
@@ -53,7 +72,9 @@ func (r *consumerRun) watch() {
 	defer close(r.watchDone)
 	select {
 	case <-r.done:
-		return
+		if !r.service || r.parent.Err() == nil {
+			return
+		}
 	case <-r.parent.Done():
 	}
 	r.mu.Lock()
@@ -72,7 +93,7 @@ func (r *consumerRun) watch() {
 		return
 	case <-timer.C:
 		r.mu.Lock()
-		r.cancel(ErrGracePeriodExceeded)
+		r.cancelWorkLocked(ErrGracePeriodExceeded, true)
 		r.mu.Unlock()
 		r.record(r.work, Observation{Operation: OperationStop, Outcome: OutcomeCanceled, Cause: ErrGracePeriodExceeded})
 	}
@@ -88,11 +109,25 @@ func (r *consumerRun) syncStopLocked() {
 	}
 	policy := r.consumer.config.Shutdown
 	if policy.Mode == broker.ShutdownCancel {
-		r.cancel(context.Cause(r.parent))
+		r.cancelWorkLocked(context.Cause(r.parent), false)
 	}
 	if policy.GracePeriod > 0 && time.Since(r.stopAt) >= policy.GracePeriod {
-		r.cancel(ErrGracePeriodExceeded)
+		r.cancelWorkLocked(ErrGracePeriodExceeded, true)
 	}
+}
+
+func (r *consumerRun) cancelWorkLocked(cause error, graceExpired bool) {
+	if r.service {
+		if r.shutdown == nil {
+			r.shutdown = &shutdownCause{
+				cause: cause,
+			}
+			r.graceExpired = graceExpired
+			r.cancel(r.shutdown)
+		}
+		return
+	}
+	r.cancel(cause)
 }
 
 func (r *consumerRun) allowCallback() bool {
@@ -105,9 +140,17 @@ func (r *consumerRun) allowCallback() bool {
 func (r *consumerRun) finish(result error) error {
 	close(r.done)
 	<-r.watchDone
-	result = errors.Join(result, r.consumer.failure("stop", context.Cause(r.parent)))
-	if cause := context.Cause(r.work); cause != nil && !errors.Is(result, cause) {
-		result = errors.Join(result, r.consumer.failure("stop", cause))
+	if r.service {
+		r.mu.Lock()
+		if r.graceExpired {
+			result = errors.Join(result, r.consumer.failure("stop", ErrGracePeriodExceeded))
+		}
+		r.mu.Unlock()
+	} else {
+		result = errors.Join(result, r.consumer.failure("stop", context.Cause(r.parent)))
+		if cause := context.Cause(r.work); cause != nil && !errors.Is(result, cause) {
+			result = errors.Join(result, r.consumer.failure("stop", cause))
+		}
 	}
 	r.cancel(context.Canceled)
 	r.record(context.WithoutCancel(r.parent), Observation{Operation: OperationRun, Outcome: outcome(result), Err: result})
@@ -133,9 +176,17 @@ func (r *consumerRun) process(message *nats.Msg, maxDeliver int, required requir
 	r.record(ctx, Observation{Metadata: delivery.metadata, Operation: OperationProcess, Outcome: OutcomeStarted})
 	started := time.Now()
 	result, callbackErr := handler.Handle(ctx, delivery)
+	callbackContextErr := ctx.Err()
+	callbackContextCause := context.Cause(ctx)
 	duration := time.Since(started)
 	if renew != nil {
 		renew.stopScheduling()
+	}
+	cooperative := false
+	if r.service && callbackErr != nil && callbackErr == callbackContextErr {
+		r.mu.Lock()
+		cooperative = r.shutdown != nil && callbackContextCause == r.shutdown
+		r.mu.Unlock()
 	}
 	callbackErr = r.consumer.failure("process", callbackErr)
 	cause := dispositionCause(result)
@@ -146,7 +197,22 @@ func (r *consumerRun) process(message *nats.Msg, maxDeliver int, required requir
 		<-renew.done
 		renewalErr = renew.err
 	}
-	if processingErr := errors.Join(callbackErr, renewalErr, context.Cause(ctx)); processingErr != nil {
+	processingErr, suppressed := r.processingResult(ctx, callbackErr, renewalErr, cooperative)
+	if suppressed {
+		r.record(
+			ctx,
+			Observation{
+				Metadata:    delivery.metadata,
+				Operation:   terminalName(result),
+				Outcome:     OutcomeSuppressed,
+				Disposition: result,
+				Cause:       cause,
+				Err:         context.Cause(ctx),
+			},
+		)
+		return nil
+	}
+	if processingErr != nil {
 		r.record(ctx, Observation{Metadata: delivery.metadata, Operation: terminalName(result), Outcome: OutcomeSuppressed,
 			Disposition: result, Cause: cause, Err: processingErr})
 		return r.consumer.failure("delivery", processingErr)
@@ -163,13 +229,34 @@ func (r *consumerRun) process(message *nats.Msg, maxDeliver int, required requir
 	r.mu.Lock()
 	r.syncStopLocked()
 	err = context.Cause(ctx)
+	stopped := r.service && r.shutdown != nil && err == r.shutdown
 	r.mu.Unlock()
 	if err != nil {
 		r.record(ctx, Observation{Metadata: delivery.metadata, Operation: operation, Outcome: OutcomeSuppressed,
 			Disposition: result, Cause: cause, Err: err})
+		if stopped {
+			return nil
+		}
 		return r.consumer.failure("terminal admission", err)
 	}
 	return r.settle(ctx, message, delivery, result, operation)
+}
+
+func (r *consumerRun) processingResult(ctx context.Context, callbackErr, renewalErr error, cooperative bool) (error, bool) {
+	if !r.service {
+		return errors.Join(callbackErr, renewalErr, context.Cause(ctx)), false
+	}
+	if cooperative {
+		callbackErr = nil
+	}
+	r.mu.Lock()
+	stopped := r.shutdown != nil && context.Cause(ctx) == r.shutdown
+	r.mu.Unlock()
+	if stopped {
+		err := errors.Join(callbackErr, renewalErr)
+		return err, err == nil
+	}
+	return errors.Join(callbackErr, renewalErr, context.Cause(ctx)), false
 }
 
 func (r *consumerRun) startRenewal(

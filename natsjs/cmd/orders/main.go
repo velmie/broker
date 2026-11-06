@@ -45,7 +45,7 @@ func run(url, domain, apiPrefix string) (result error) {
 	if err != nil {
 		return err
 	}
-	defer nc.Close() // The connection owner closes it after coordinator.Run joins.
+	defer nc.Close() // The connection owner closes it after the coordinator joins.
 	stream := "BROKER_EXAMPLE_" + nuid.Next()
 	subject := stream + ".orders"
 	replySubject := stream + ".created"
@@ -96,8 +96,6 @@ func run(url, domain, apiPrefix string) (result error) {
 		fmt.Printf("created order %s: %d x %s\n", command.ID, command.Quantity, command.SKU)
 		return nil
 	}, replies).WithMiddleware(
-		// The demo callback returns no sensitive application errors. Applications
-		// must supply a handler that redacts their own causes and selected fields.
 		broker.LogProcessing(slog.Default(), broker.ProcessingLogConfig{
 			Attributes: func(_ context.Context, delivery broker.Delivery, _ broker.Disposition, err error) []slog.Attr {
 				if err == nil {
@@ -130,11 +128,7 @@ func run(url, domain, apiPrefix string) (result error) {
 	if publishErr := publish(ctx, orders.CreateOrderDTO{OrderID: "order-1", ProductCode: "book-1", Count: 2}); publishErr != nil {
 		return publishErr
 	}
-	err = coordinator.Run(ctx)
-	if onlyCancellation(err) {
-		return nil
-	}
-	return err
+	return coordinator.RunService(ctx)
 }
 
 func newReceiptPublisher(nc *nats.Conn, subject string) (broker.Publisher, error) {
@@ -151,25 +145,4 @@ func newReceiptPublisher(nc *nats.Conn, subject string) (broker.Publisher, error
 			return nil
 		})
 	}), nil
-}
-
-// A canceled owner context is expected here. Independent processing, transport
-// or cleanup failures in an errors.Join tree still make the example fail.
-func onlyCancellation(err error) bool {
-	if err == nil || err == context.Canceled {
-		return true
-	}
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		for _, cause := range joined.Unwrap() {
-			if !onlyCancellation(cause) {
-				return false
-			}
-		}
-		return true
-	}
-	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
-		cause := wrapped.Unwrap()
-		return cause != nil && onlyCancellation(cause)
-	}
-	return false
 }

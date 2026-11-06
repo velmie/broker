@@ -51,8 +51,19 @@ func TestNativePushDrainJoinsHeldCallback(t *testing.T) {
 		nats.Context(ctx)); err != nil {
 		t.Fatal(err)
 	}
-	entered, release := make(chan struct{}), make(chan struct{})
-	consumer, err := natsjs.NewPushConsumer(connection, natsjs.ConsumerConfig{Stream: stream, Consumer: "held", Subject: subject})
+	entered, release, stopping := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	consumer, err := natsjs.NewPushConsumer(connection, natsjs.ConsumerConfig{
+		Stream:   stream,
+		Consumer: "held",
+		Subject:  subject,
+		Observer: natsjs.Observer{
+			Record: func(_ context.Context, event natsjs.Observation) {
+				if event.Operation == natsjs.OperationStop && event.Outcome == natsjs.OutcomeStarted {
+					close(stopping)
+				}
+			},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +71,7 @@ func TestNativePushDrainJoinsHeldCallback(t *testing.T) {
 	defer stop()
 	drained := make(chan error, 1)
 	go func() {
-		drained <- consumer.Run(runCtx, broker.NewTypedHandler(broker.DecodeJSON[pushCommand],
+		drained <- consumer.RunService(runCtx, broker.NewTypedHandler(broker.DecodeJSON[pushCommand],
 			func(context.Context, pushCommand) error { close(entered); <-release; return nil }))
 	}()
 	if _, err = js.Publish(subject, []byte(`{"id":"held"}`), nats.Context(ctx)); err != nil {
@@ -73,14 +84,19 @@ func TestNativePushDrainJoinsHeldCallback(t *testing.T) {
 	}
 	stop()
 	select {
+	case <-stopping:
+	case <-ctx.Done():
+		t.Fatal(context.Cause(ctx))
+	}
+	select {
 	case err = <-drained:
 		t.Errorf("drain returned before callback joined: %v", err)
-	case <-time.After(30 * time.Millisecond):
+	default:
 	}
 	close(release)
 	select {
 	case err = <-drained:
-		if !onlyCancellation(err) {
+		if err != nil {
 			t.Error(err)
 		}
 	case <-ctx.Done():
