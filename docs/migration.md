@@ -98,13 +98,31 @@ Check native delay precision and mode restrictions. A classifier must account
 for partial business effects.
 
 Use `RecoverPanics`, `LogProcessing` and adapter observers at their owning
-boundaries. Supply original errors to the logger. `DescribeError` preserves
-structured cause trees; application describers and redaction retain the useful
-fields that the library cannot infer. See [error handling](error-handling.md).
+boundaries. Supply original errors to the logger so their cause text is visible.
+See [error handling](error-handling.md).
 
 `WithConsumerRecovery` replaces a run only after all its work joins. Classify the
 complete cause tree and bound replacements. Do not restart blindly after
 uncertain settlement, processing or cleanup failures.
+
+## Service shutdown results
+
+Core v1.2 and NATS v3.3 add `RunService`. For groups consisting entirely of
+supported consumers, replace `Coordinator.Run(ctx)` with `RunService(ctx)` and
+return any non-nil error directly. Successful parent cancellation, deadline or
+custom cancellation cause returns `nil` after work and cleanup join. Do not
+discard errors using `errors.Is(err, context.Canceled)`: an error may contain
+independent failures. Existing `Run` behavior is unchanged.
+
+The NATS managed consumer supports this contract. SQS and Azure managed
+consumers currently do not, and a mixed group fails preflight. Recovery wrappers
+preserve the capability when their initial consumer supports it and validate
+replacement generations. See the [result table](coordinator.md#shutdown) and
+[NATS shutdown details](../natsjs/README.md#shutdown-results).
+
+`PanicError.Error` and `natsjs.ObserverPanicError.Error` now include the panic
+value and error cause text. Ordinary error logging therefore includes that text.
+Error identity and the separately available processing stack are unchanged.
 
 ## NATS pull receive recovery
 

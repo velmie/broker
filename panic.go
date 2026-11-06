@@ -6,9 +6,9 @@ import (
 	"runtime/debug"
 )
 
-// PanicError retains an opted-in processing panic. Value and Stack can contain
-// application data and require redaction before logging. Error never formats the
-// value or stack. An error panic remains available through errors.Is/errors.As.
+// PanicError retains an opted-in processing panic. Error includes the panic value
+// and its type. Stack is available separately. An error panic remains available
+// through errors.Is/errors.As.
 type PanicError struct {
 	Value any
 	Stack []byte
@@ -35,5 +35,7 @@ func RecoverPanics() HandlerMiddleware {
 	}}
 }
 
-func (e *PanicError) Error() string { return fmt.Sprintf("processing panic (%T)", e.Value) }
+func (e *PanicError) Error() string {
+	return fmt.Sprintf("processing panic (%T): %v", e.Value, e.Value)
+}
 func (e *PanicError) Unwrap() error { cause, _ := e.Value.(error); return cause }
