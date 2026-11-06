@@ -107,22 +107,22 @@ uncertain settlement, processing or cleanup failures.
 
 ## Service shutdown results
 
-Core v1.2, NATS v3.3 and SQS v1.2 support `RunService`. For groups consisting entirely of
-supported consumers, replace `Coordinator.Run(ctx)` with `RunService(ctx)` and
+Core v1.2, NATS v3.3, SQS v1.2 and Azure Service Bus v1.2 support `RunService`. For groups
+consisting entirely of supported consumers, replace `Coordinator.Run(ctx)` with `RunService(ctx)` and
 return any non-nil error directly. Successful parent cancellation, deadline or
 custom cancellation cause returns `nil` after work and cleanup join. Do not
 discard errors using `errors.Is(err, context.Canceled)`: an error may contain
 independent failures. Existing `Run` behavior is unchanged.
 
-The NATS and SQS managed consumers support this contract. Azure managed
-consumers do not, and a group containing one fails preflight. Recovery wrappers
+The NATS, SQS and Azure managed consumers support this contract. Recovery wrappers
 preserve the capability when their initial consumer supports it and validate
-replacement generations. See the [result table](coordinator.md#shutdown) and
-[NATS shutdown details](../natsjs/README.md#shutdown-results) and
-[SQS shutdown details](../sqs/README.md#shutdown-results).
+replacement generations. See the [result table](coordinator.md#shutdown),
+[NATS shutdown details](../natsjs/README.md#shutdown-results),
+[SQS shutdown details](../sqs/README.md#shutdown-results) and
+[Azure shutdown details](../azuresb/readme.md#shutdown-results).
 
-`PanicError.Error`, `natsjs.ObserverPanicError.Error` and
-`sqs.ObserverPanicError.Error` include the panic value and error cause text. Ordinary error logging therefore includes that text.
+`PanicError.Error`, `natsjs.ObserverPanicError.Error`, `sqs.ObserverPanicError.Error` and
+`azuresb.ObserverPanicError.Error` include the panic value and error cause text. Ordinary error logging therefore includes that text.
 Error identity and the separately available processing stack are unchanged.
 
 ## NATS pull receive recovery
