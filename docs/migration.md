@@ -107,21 +107,22 @@ uncertain settlement, processing or cleanup failures.
 
 ## Service shutdown results
 
-Core v1.2 and NATS v3.3 add `RunService`. For groups consisting entirely of
+Core v1.2, NATS v3.3 and SQS v1.2 support `RunService`. For groups consisting entirely of
 supported consumers, replace `Coordinator.Run(ctx)` with `RunService(ctx)` and
 return any non-nil error directly. Successful parent cancellation, deadline or
 custom cancellation cause returns `nil` after work and cleanup join. Do not
 discard errors using `errors.Is(err, context.Canceled)`: an error may contain
 independent failures. Existing `Run` behavior is unchanged.
 
-The NATS managed consumer supports this contract. SQS and Azure managed
-consumers currently do not, and a mixed group fails preflight. Recovery wrappers
+The NATS and SQS managed consumers support this contract. Azure managed
+consumers do not, and a group containing one fails preflight. Recovery wrappers
 preserve the capability when their initial consumer supports it and validate
 replacement generations. See the [result table](coordinator.md#shutdown) and
-[NATS shutdown details](../natsjs/README.md#shutdown-results).
+[NATS shutdown details](../natsjs/README.md#shutdown-results) and
+[SQS shutdown details](../sqs/README.md#shutdown-results).
 
-`PanicError.Error` and `natsjs.ObserverPanicError.Error` now include the panic
-value and error cause text. Ordinary error logging therefore includes that text.
+`PanicError.Error`, `natsjs.ObserverPanicError.Error` and
+`sqs.ObserverPanicError.Error` include the panic value and error cause text. Ordinary error logging therefore includes that text.
 Error identity and the separately available processing stack are unchanged.
 
 ## NATS pull receive recovery

@@ -31,9 +31,7 @@ const (
 // business work. No bodies, headers, URLs or receipts enter observation records.
 type Observer struct {
 	Begin func(context.Context, DeliveryInfo) context.Context
-	// Record receives original error objects. The logging adapter must redact
-	// application-specific sensitive values before serialization, while preserving
-	// operation, field, safe source and error type/code. SDK errors can contain URLs.
+	// Record receives original error objects.
 	Record func(context.Context, Observation)
 }
 
@@ -42,8 +40,8 @@ type DeliveryInfo struct{ Source string }
 
 // Observation reports native service acceptance separately from processing.
 // Unknown means the operation may have changed server state. Accepted delete
-// is not an exactly-once guarantee. Err and Cause require application-aware
-// redaction. Cause preserves a requested retry reason independently of Err.
+// is not an exactly-once guarantee. Cause preserves a requested retry reason
+// independently of Err.
 type Observation struct {
 	Source    string
 	Operation string
@@ -54,7 +52,6 @@ type Observation struct {
 }
 
 // OperationError preserves the original operation failure and safe source label.
-// Its cause may contain sensitive application or SDK details requiring redaction.
 type OperationError struct {
 	Source, Operation string
 	Cause             error
@@ -74,10 +71,10 @@ type FieldError struct {
 func (e *FieldError) Error() string { return fmt.Sprintf("%s: %v", e.Field, e.Cause) }
 func (e *FieldError) Unwrap() error { return e.Cause }
 
-// ObserverPanicError retains panic evidence for application-aware redaction.
+// ObserverPanicError retains the panic value.
 type ObserverPanicError struct{ Value any }
 
-func (e *ObserverPanicError) Error() string { return fmt.Sprintf("sqs observer panic (%T)", e.Value) }
+func (e *ObserverPanicError) Error() string { return fmt.Sprintf("sqs observer panic: %v", e.Value) }
 func (e *ObserverPanicError) Unwrap() error { v, _ := e.Value.(error); return v }
 
 type observation struct {

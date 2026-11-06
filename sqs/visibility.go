@@ -124,11 +124,15 @@ func (c *Consumer) newRenewal(ctx context.Context,
 				return
 			}
 			start := time.Now()
-			operationCtx, stopOperation := context.WithTimeout(renewalCtx, c.config.OperationTimeout)
+			operationParent := renewalCtx
+			if state.service {
+				operationParent = context.WithoutCancel(renewalCtx)
+			}
+			operationCtx, stopOperation := context.WithTimeout(operationParent, c.config.OperationTimeout)
 			err := c.changeVisibility(operationCtx, receipt, c.config.VisibilityTimeout)
 			stopOperation()
 			if err != nil {
-				if renewalCtx.Err() != nil && onlyCanceled(err) {
+				if !state.service && renewalCtx.Err() != nil && onlyCanceled(err) {
 					return
 				}
 				run.err = operationError(c.config.Source, OperationRenew, err)

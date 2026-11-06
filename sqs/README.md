@@ -70,6 +70,24 @@ work finish. Forced cancellation suppresses terminal operations not yet started;
 active native operations and renewal join before return. A delete error can leave
 the outcome unknown and does not trigger another disposition or callback replay.
 
+## Shutdown results
+
+`Consumer.RunService` supports `Coordinator.RunService` and returns nil for a
+parent cancellation, deadline or custom stop cause when work and cleanup succeed.
+`Run` retains its existing cancellation result. Both methods join admitted work.
+
+With forced shutdown, a callback returning exactly its delivery context's error
+cooperates with cancellation. Wrapped or joined callback errors remain failures.
+Unadmitted terminal operations are suppressed. An expired grace period returns
+`ErrGracePeriodExceeded`. For `RunService`, an admitted renewal continues within
+its operation timeout after forced stop. Independent callback, renewal, settlement
+and observer failures retain their causes, including failures concurrent with
+stop. When stop has been requested, a receive error matching its cancellation is
+treated as stop evidence, including a credential-provider failure that contains
+cancellation. See the [coordinator result table](../docs/coordinator.md#shutdown).
+
+`ObserverPanicError.Error` includes the panic value for both `Run` and publication.
+
 ## Message mapping
 
 Publication waits for `SendMessage` acceptance. It supports concurrent callers
@@ -113,8 +131,7 @@ shared hooks must support concurrent runs and publications. Hooks must return
 promptly. A hook panic remains visible without replaying native operations.
 
 `OperationError` and `FieldError` preserve source, operation or field and original
-causes. The logging adapter owns redaction of SDK and application data. See
-[diagnostics](../docs/error-handling.md#structured-diagnostics).
+causes. See [diagnostics](../docs/error-handling.md#structured-diagnostics).
 
 ## Run the example
 

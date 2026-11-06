@@ -45,7 +45,7 @@ The coordinator joins all results and preserves independent causes through
 | Managed adapter | `RunService` support |
 | --- | --- |
 | NATS JetStream | Yes |
-| SQS | Not yet; use `Run` |
+| SQS | Yes |
 | Azure Service Bus | Not yet; use `Run` |
 | SNS | Publisher only |
 
@@ -74,7 +74,8 @@ the consumer returns. Close borrowed clients and flush telemetry afterward.
 | Parent canceled, deadline reached, or custom cancellation cause, with successful work and cleanup | `nil` |
 | Immediate stop suppresses an unadmitted terminal operation | `nil` when the callback cooperates; delivery remains pending |
 | Grace period expires | An error matching the adapter's grace-expiry cause |
-| Callback, startup, receive, renewal, settlement, cleanup or observer fails independently | An error retaining its original causes |
+| Callback, startup, renewal, settlement, cleanup or observer fails independently | An error retaining its original causes |
+| Receive fails | An error retaining its causes, except an SQS receive error matching an already requested stop |
 | One registration fails while peers stop cleanly | The failed registration's error |
 
 An independent operation timeout remains a failure, even when the parent stops.
@@ -82,7 +83,7 @@ The parent cause remains available from `context.Cause(ctx)` and adapter stop
 observations. Do not discard a non-nil result because it matches
 `context.Canceled`: it may also contain an independent failure.
 
-For NATS, a callback returning exactly its canceled delivery context's `ctx.Err()`
+For NATS and SQS, a callback returning exactly its canceled delivery context's `ctx.Err()`
 after adapter-initiated cancellation is cooperative. Wrapped and joined callback
 errors are failures. An application that needs to distinguish business outcomes
 from cancellation should classify them at the callback boundary. The comparison

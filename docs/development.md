@@ -12,7 +12,7 @@ manifests. From the repository root, with no existing `go.work`:
 
 ```sh
 go work init . ./natsjs ./sqs ./sns ./azuresb ./idempotency ./otelbroker \
-  ./idempotency/examples ./otelbroker/examples
+  ./idempotency/examples ./otelbroker/examples ./sqs/integration
 go work edit \
   -replace=github.com/velmie/broker@v1.1.0=. \
   -replace=github.com/velmie/broker@v1.2.0=. \
@@ -49,8 +49,9 @@ configured module proxy. Workspace checks and independent module resolution test
 different contracts.
 
 Native NATS, SQS and SNS tests require Docker and own their temporary fixtures.
-Image overrides are `NATS_TEST_IMAGE`, `SQS_TEST_IMAGE`, `SNS_TEST_IMAGE` and
-`SNS_BINARY_TEST_IMAGE`. Keep the binary-forwarding fixture selection from CI;
+The separate `sqs/integration` module verifies mixed NATS and SQS coordination
+against the checked-out SQS module using this workspace. Image overrides are
+`NATS_TEST_IMAGE`, `SQS_TEST_IMAGE`, `SNS_TEST_IMAGE` and `SNS_BINARY_TEST_IMAGE`. Keep the binary-forwarding fixture selection from CI;
 it covers a separate emulator compatibility path. Azure tests require the
 explicit fixtures below. No new tests are needed merely to check a Markdown
 example: build or run its code separately.
