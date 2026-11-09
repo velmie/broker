@@ -46,19 +46,33 @@ func Orders(client *azservicebus.Client, queue string) broker.ConsumerFactory {
 
 Register the factory with a [Coordinator](../docs/coordinator.md). Construction
 and validation acquire no receiver. Successful acquisition transfers cleanup to
-`Run`; a failing factory must clean up its own partial acquisition. Repeated runs
-and recovery require a fresh receiver.
+`Run` or `RunService`; a failing factory must clean up its own partial
+acquisition. Repeated runs and recovery require a fresh receiver.
 
 For a subscription, call `NewReceiverForSubscription(topic, subscription, options)`
 in the receiver factory. The SDK does not expose its mode for validation. A
 ReceiveAndDelete receiver declared as PeekLock could remove messages before
 processing, so derive both settings from the same value.
 
-`Run` closes its receiver once after callbacks and native operations join.
+`Run` and `RunService` close the receiver once after callbacks and native
+operations join.
 The caller then closes borrowed senders and the SDK client, preserving cleanup
 errors. Explicitly close owned links: the SDK client's close operation does not
 report every underlying link failure. The [orders command](cmd/orders/main.go)
 shows the ownership and cleanup order.
+
+## Shutdown results
+
+`RunService` returns nil after a parent cancellation, deadline or custom stop
+cause when processing and receiver cleanup succeed. It returns independent
+acquisition, receive, processing, renewal, settlement, observer and cleanup
+failures with their causes. `Run` retains its existing cancellation result.
+
+With immediate cancellation, a callback that returns exactly its delivery
+context's `ctx.Err()` cooperates with shutdown. Wrapped or joined errors remain
+failures. If the grace period expires, the result matches
+`ErrGracePeriodExceeded`. An admitted settlement retains its operation budget.
+See the [coordinator result contract](../docs/coordinator.md#shutdown).
 
 ## Delivery decisions
 

@@ -82,7 +82,7 @@ func (e *FieldError) Unwrap() error { return e.Cause }
 type ObserverPanicError struct{ Value any }
 
 func (e *ObserverPanicError) Error() string {
-	return fmt.Sprintf("azuresb observer panic (%T)", e.Value)
+	return fmt.Sprintf("azuresb observer panic: %v", e.Value)
 }
 func (e *ObserverPanicError) Unwrap() error { v, _ := e.Value.(error); return v }
 

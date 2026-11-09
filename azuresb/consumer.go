@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"sync/atomic"
 	"time"
 
@@ -68,7 +69,18 @@ func (c *Consumer) Validate(requirements ...broker.Requirement) error {
 // drains an admitted callback. Forced stop cancels it and suppresses a terminal
 // operation not yet admitted. An admitted terminal operation retains its budget.
 // Callbacks must cooperate with cancellation. Panics unwind through cleanup.
-func (c *Consumer) Run(ctx context.Context, handler broker.Handler) (result error) {
+func (c *Consumer) Run(ctx context.Context, handler broker.Handler) error {
+	return c.run(ctx, handler, false)
+}
+
+// RunService joins the same work as Run, but a parent stop alone succeeds.
+// Independent failures and an expired grace period remain errors. A callback
+// returning exactly its delivery context error after forced shutdown cooperates.
+func (c *Consumer) RunService(ctx context.Context, handler broker.Handler) error {
+	return c.run(ctx, handler, true)
+}
+
+func (c *Consumer) run(ctx context.Context, handler broker.Handler, service bool) (result error) {
 	if err := c.Validate(handler.Requirements()...); err != nil {
 		return err
 	}
@@ -77,10 +89,19 @@ func (c *Consumer) Run(ctx context.Context, handler broker.Handler) (result erro
 	}
 	defer c.running.Store(false)
 	if err := context.Cause(ctx); err != nil {
+		if service {
+			return nil
+		}
 		return err
 	}
 	observer := observation{observer: c.config.Observer}
-	defer func() { result = errors.Join(result, context.Cause(ctx), observer.err) }()
+	defer func() {
+		if !service {
+			result = errors.Join(result, context.Cause(ctx), observer.err)
+			return
+		}
+		result = errors.Join(result, observer.err)
+	}()
 	start := time.Now()
 	receiver, err := c.newReceiver()
 	if err != nil {
@@ -90,7 +111,7 @@ func (c *Consumer) Run(ctx context.Context, handler broker.Handler) (result erro
 	}
 	defer func() { result = errors.Join(result, c.closeReceiver(ctx, receiver, &observer)) }()
 	for ctx.Err() == nil {
-		messages, err := c.receive(ctx, receiver, &observer)
+		messages, err := c.receive(ctx, receiver, &observer, service)
 		if err != nil {
 			return err
 		}
@@ -98,7 +119,7 @@ func (c *Consumer) Run(ctx context.Context, handler broker.Handler) (result erro
 			if ctx.Err() != nil {
 				break
 			}
-			if processErr := c.process(ctx, receiver, handler, native, &observer); processErr != nil {
+			if processErr := c.process(ctx, receiver, handler, native, &observer, service); processErr != nil {
 				return processErr
 			}
 		}
@@ -118,12 +139,15 @@ func (c *Consumer) closeReceiver(ctx context.Context, r Receiver, o *observation
 	o.record(ctx, c.config.Source, OperationClose, outcome, start, err, nil)
 	return err
 }
-func (c *Consumer) receive(ctx context.Context, r Receiver, o *observation) ([]*azservicebus.ReceivedMessage, error) {
+func (c *Consumer) receive(ctx context.Context, r Receiver, o *observation, service bool) ([]*azservicebus.ReceivedMessage, error) {
 	poll, cancel := context.WithTimeout(ctx, c.config.ReceiveTimeout)
 	defer cancel()
 	start := time.Now()
 	messages, err := r.ReceiveMessages(poll, 1, nil)
 	if err != nil {
+		if service && ctx.Err() != nil && receiveCanceled(err, ctx.Err()) {
+			return nil, nil
+		}
 		if ctx.Err() == nil && poll.Err() == context.DeadlineExceeded && onlyCause(err, context.DeadlineExceeded) {
 			return nil, nil
 		}
@@ -133,7 +157,11 @@ func (c *Consumer) receive(ctx context.Context, r Receiver, o *observation) ([]*
 	}
 	return messages, nil
 }
-func (c *Consumer) process(ctx context.Context, r Receiver, h broker.Handler, native *azservicebus.ReceivedMessage, o *observation) error {
+
+//nolint:gocyclo,funlen // Processing joins the callback, renewal, shutdown and settlement outcomes.
+func (c *Consumer) process(
+	ctx context.Context, r Receiver, h broker.Handler, native *azservicebus.ReceivedMessage, o *observation, service bool,
+) (result error) {
 	start := time.Now()
 	value, err := detach(native, c.config.Source)
 	if err != nil {
@@ -143,25 +171,43 @@ func (c *Consumer) process(ctx context.Context, r Receiver, h broker.Handler, na
 	}
 	work, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
 	defer cancel(nil)
-	state := processingState{cancel: cancel}
+	state := processingState{cancel: cancel, service: service}
 	done, joined := make(chan struct{}), make(chan struct{})
 	go state.watch(ctx, c.config.Shutdown, done, joined)
-	defer func() { close(done); <-joined }()
+	defer func() {
+		close(done)
+		<-joined
+		if service && state.graceExpired {
+			result = errors.Join(result, operationError(c.config.Source, "stop", ErrGracePeriodExceeded))
+		}
+	}()
 	if ctx.Err() != nil {
+		if service {
+			return nil
+		}
 		return context.Cause(ctx)
 	}
 	work = o.begin(work, c.config.Source)
 	renewal := c.startRenewal(work, r, native, h.Requirements(), &state, o)
-	var renewalErr error
+	var renewalErr, callbackContextErr, callbackContextCause error
 	disposition, err := func() (broker.Disposition, error) {
 		defer func() { renewalErr = renewal.finish() }()
-		return h.Handle(work, value)
+		disposition, callbackErr := h.Handle(work, value)
+		callbackContextErr = work.Err()
+		callbackContextCause = context.Cause(work)
+		return disposition, callbackErr
 	}()
 	var cause error
 	if retry, ok := disposition.(broker.RetryAfter); ok {
 		cause = retry.Cause
 	}
 	if err != nil {
+		state.mu.Lock()
+		cooperative := service && state.shutdown != nil && callbackContextCause == state.shutdown && err == callbackContextErr
+		state.mu.Unlock()
+		if cooperative {
+			return renewalErr
+		}
 		err = operationError(c.config.Source, OperationProcess, err)
 		o.record(work, c.config.Source, OperationProcess, OutcomeFailed, start, err, cause)
 		return errors.Join(err, renewalErr)
@@ -178,13 +224,19 @@ func (c *Consumer) process(ctx context.Context, r Receiver, h broker.Handler, na
 	}
 	state.mu.Lock()
 	if ctx.Err() != nil && c.config.Shutdown.Mode == broker.ShutdownCancel {
-		state.force(context.Cause(ctx))
+		state.forceStop(context.Cause(ctx), false)
 	}
 	allowed := !state.forced && work.Err() == nil
 	state.mu.Unlock()
 	if !allowed {
 		err = context.Cause(work)
 		o.record(work, c.config.Source, operation, OutcomeSuppressed, time.Now(), err, cause)
+		state.mu.Lock()
+		stopped := service && state.shutdown != nil && err == state.shutdown
+		state.mu.Unlock()
+		if stopped {
+			return nil
+		}
 		return err
 	}
 	if operation == "" {
@@ -257,4 +309,14 @@ func onlyCause(err, target error) bool {
 	default:
 		return false
 	}
+}
+
+// receiveCanceled recognizes the cancellation returned by ReceiveMessages and
+// by net.Dialer when the SDK is still opening its connection.
+func receiveCanceled(err, cause error) bool {
+	if err == cause {
+		return true
+	}
+	dial, ok := err.(*net.OpError)
+	return ok && dial.Op == "dial" && errors.Is(dial, cause)
 }

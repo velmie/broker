@@ -16,17 +16,26 @@ import (
 
 const maxReceiveFailures = 4
 
-func (c *Consumer) receiveResilient(ctx context.Context, observer *observation) ([]types.Message, error) {
+func (c *Consumer) receiveResilient(ctx context.Context, observer *observation, service bool) ([]types.Message, error) {
 	var lastFailure error
 	for failures := 1; ; failures++ {
 		if ctx.Err() != nil {
+			if service {
+				return nil, lastFailure
+			}
 			return nil, errors.Join(lastFailure, context.Cause(ctx))
 		}
-		messages, err := c.receive(ctx, observer)
+		messages, err, stopped := c.receive(ctx, observer, service)
+		if stopped {
+			return nil, lastFailure
+		}
 		if err == nil {
 			return messages, nil
 		}
 		if ctx.Err() != nil {
+			if service {
+				return nil, errors.Join(lastFailure, err)
+			}
 			return nil, errors.Join(lastFailure, err, context.Cause(ctx))
 		}
 		if !c.config.ResilientReceive || failures >= maxReceiveFailures || !retryableReceive(err) {
@@ -37,6 +46,9 @@ func (c *Consumer) receiveResilient(ctx context.Context, observer *observation) 
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+			if service {
+				return nil, err
+			}
 			return nil, errors.Join(err, context.Cause(ctx))
 		case <-timer.C:
 		}

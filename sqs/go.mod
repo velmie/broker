@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.5
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.0
 	github.com/aws/smithy-go v1.28.1
-	github.com/velmie/broker v1.0.0
+	github.com/velmie/broker v1.2.0
 )
 
 require (

@@ -56,7 +56,7 @@ func (c *Consumer) startRenewal(ctx context.Context, receiver Receiver, native *
 			err := receiver.RenewMessageLock(operation, native, nil)
 			cancel()
 			if err != nil {
-				if ctx.Err() != nil && onlyCause(err, context.Canceled) {
+				if ctx.Err() != nil && ((!state.service && onlyCause(err, context.Canceled)) || (state.service && err == ctx.Err())) {
 					return
 				}
 				run.err = operationError(c.config.Source, OperationRenew, err)
