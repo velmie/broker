@@ -3,7 +3,7 @@ module github.com/velmie/broker/otelbroker
 go 1.26.0
 
 require (
-	github.com/velmie/broker v1.0.0
+	github.com/velmie/broker v1.3.0-rc.4
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0

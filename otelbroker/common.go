@@ -45,6 +45,11 @@ func WithSpanNameFormatter(f func(string, string, broker.Message) string) Option
 	return func(o *options) { o.name = f }
 }
 
+// WithProcessingAttributes selects attributes after extraction and before the span starts.
+func WithProcessingAttributes(f func(context.Context, broker.Delivery) []attribute.KeyValue) Option {
+	return func(o *options) { o.processingAttributes = f }
+}
+
 // WithErrorRecorder receives the original error, including requested retry causes.
 // It must select safe diagnostic fields before exporting application error data.
 // The default records only the error type. Failure status uses fixed text.
@@ -53,11 +58,12 @@ func WithErrorRecorder(f func(context.Context, trace.Span, error)) Option {
 }
 
 type options struct {
-	propagator propagation.TextMapPropagator
-	tracer     trace.Tracer
-	start      []trace.SpanStartOption
-	name       func(string, string, broker.Message) string
-	record     func(context.Context, trace.Span, error)
+	propagator           propagation.TextMapPropagator
+	tracer               trace.Tracer
+	start                []trace.SpanStartOption
+	name                 func(string, string, broker.Message) string
+	record               func(context.Context, trace.Span, error)
+	processingAttributes func(context.Context, broker.Delivery) []attribute.KeyValue
 }
 
 func configure(values []Option) options {

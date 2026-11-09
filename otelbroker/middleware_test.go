@@ -84,7 +84,8 @@ func TestProcessingPreservesContextRequirementsAndOutcomes(t *testing.T) {
 		failed  bool
 	}{
 		{"handled", broker.Handled{}, nil, "handled", false},
-		{"retry", broker.RetryAfter{Delay: time.Second, Cause: sentinel}, nil, "retry_requested", false},
+		{"retry", broker.RetryAfter{Delay: time.Second, Cause: sentinel}, nil, "retry_requested", true},
+		{"reject", broker.Reject{Cause: sentinel}, nil, "reject_requested", true},
 		{"failed", nil, sentinel, "failed", true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -104,7 +105,7 @@ func TestProcessingPreservesContextRequirementsAndOutcomes(t *testing.T) {
 			if !reflect.DeepEqual(result, test.result) || err != test.err || len(h.Requirements()) != 1 {
 				t.Fatal("changed callback contract")
 			}
-			if (test.failed || test.name == "retry") && observed != sentinel {
+			if test.failed && observed != sentinel {
 				t.Fatal("cause lost")
 			}
 			span := recorder.Ended()[0]

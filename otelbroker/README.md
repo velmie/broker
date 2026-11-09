@@ -58,9 +58,8 @@ With an ambient span, processing is its child and links to extracted message
 context. Without an ambient span, valid extracted context becomes its parent.
 Context values and cancellation remain intact.
 
-Propagation reads selected names case-insensitively only when there is one valid
-text value. Duplicates, aliases and invalid text are ignored by tracing without
-rejecting application processing. Injection replaces the selected propagator's
+Extraction exposes header names, aliases and repeated values to the selected
+propagator, which decides whether to accept them. Injection replaces the selected propagator's
 fields while preserving unrelated ordered and binary headers. Caller data stays
 unchanged.
 
@@ -70,9 +69,8 @@ and whether to carry baggage. Propagation is correlation, not authorization.
 ## Attributes and errors
 
 `WithSpanStartOptions` and `WithSpanNameFormatter` customize spans. The formatter
-receives the operation, destination and read-only message. For per-message
-attributes, put application middleware inside tracing and use
-`trace.SpanFromContext(ctx).SetAttributes(...)` with approved values.
+receives the operation, destination and read-only message. `WithProcessingAttributes`
+selects per-delivery attributes after extraction and before the span starts.
 
 `WithErrorRecorder` receives the original error and active span. The default
 records type and failure status without raw error text, bodies or header values.
@@ -82,9 +80,12 @@ explicit export decision. Callbacks must support concurrency and must not panic.
 
 ## Observe native completion
 
-Processing ends before the adapter settles a delivery. Connect adapter
-`Observer.Begin` and `Observer.Record` hooks when native-operation spans are
-needed. The [traced examples](examples/README.md) show delivery spans with separate
+Processing ends before the adapter settles a delivery. Use
+`WithProcessingContext` in `Observer.Begin` and `ProcessingContext` in
+`Observer.Record` to correlate native outcomes with the processing span without
+changing the context used for native operations. The separate
+`github.com/velmie/broker/otelbroker/natsjs` module provides a NATS observer.
+The [traced examples](examples/README.md) show delivery spans with separate
 ACK, delete, renewal or completion observations. Successful processing can coexist
 with an unknown native outcome. Avoid instrumenting the same operation twice.
 

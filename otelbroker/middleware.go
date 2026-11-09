@@ -67,7 +67,11 @@ func TraceProcessing(system string, values ...Option) broker.HandlerMiddleware {
 			} else {
 				ctx = extracted
 			}
+			if o.processingAttributes != nil {
+				start = append(start, trace.WithAttributes(o.processingAttributes(ctx, delivery)...))
+			}
 			ctx, span := tracer.Start(ctx, o.name("process", delivery.Source(), message), start...)
+			captureProcessingContext(ctx)
 			complete := false
 			defer func() {
 				if !complete {
@@ -87,7 +91,12 @@ func TraceProcessing(system string, values ...Option) broker.HandlerMiddleware {
 				case broker.RetryAfter:
 					outcome = "retry_requested"
 					if value.Cause != nil {
-						o.record(ctx, span, value.Cause)
+						o.failure(ctx, span, value.Cause)
+					}
+				case broker.Reject:
+					outcome = "reject_requested"
+					if value.Cause != nil {
+						o.failure(ctx, span, value.Cause)
 					}
 				}
 			}
