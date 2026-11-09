@@ -172,3 +172,21 @@ Output includes `created order`, `reply confirmed` and `ack confirmed`.
 
 See [the application mapping](examples/orders/application.go) for typed DTOs and
 commands, and [native sessions](cmd/native/README.md) for SDK-specific features.
+
+## Configured connection and topology profiles
+
+`ConnectionConfig` loads a single NATS endpoint with optional username and
+password and verified TLS. `Validate` checks the configuration without opening
+resources. `OpenConnection` returns a native connection. Its context governs
+connection attempts and must remain alive until the connection is closed.
+Close the connection after its users have stopped. The configuration defaults
+are intended for a configuration loader, not applied by `OpenConnection`.
+Other authentication or connection profiles can use the native NATS client.
+
+`EnsureLimitsStream`, `EnsureWorkQueueStream` and `EnsureDurableConsumer` create
+missing resources and verify existing ones without modifying them.
+`RequireRetainedStream` verifies an external stream without creating it, and
+`CheckStreams` checks availability only. They borrow the JetStream client and
+honor its timeout and the supplied context. Work-queue `MaxMessages` and
+`MaxBytes`, and durable `MaxAckPending`, apply when creating a resource. They do
+not limit operator adjustments to existing compatible resources.
