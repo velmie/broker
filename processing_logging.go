@@ -45,8 +45,12 @@ func LogProcessing(logger *slog.Logger, config ProcessingLogConfig) HandlerMiddl
 		return func(ctx context.Context, delivery Delivery) (Disposition, error) {
 			started := time.Now()
 			result, err := next(ctx, delivery)
+			if ctx.Err() != nil && err == ctx.Err() {
+				return result, err
+			}
 			retry, retryRequested := result.(RetryAfter)
-			if err == nil && !retryRequested && !config.LogSuccess {
+			reject, rejectRequested := result.(Reject)
+			if err == nil && !retryRequested && !rejectRequested && !config.LogSuccess {
 				return result, err
 			}
 			level := processingLogLevel(result, err)
@@ -64,7 +68,16 @@ func LogProcessing(logger *slog.Logger, config ProcessingLogConfig) HandlerMiddl
 				attrs = append(attrs, slog.String("stage", processingStage(err)), slog.Any("error", err))
 			}
 			if retryRequested && retry.Cause != nil {
+				if err == nil {
+					attrs = append(attrs, slog.String("stage", processingStage(retry.Cause)))
+				}
 				attrs = append(attrs, slog.Any("cause", retry.Cause))
+			}
+			if rejectRequested && reject.Cause != nil {
+				if err == nil {
+					attrs = append(attrs, slog.String("stage", processingStage(reject.Cause)))
+				}
+				attrs = append(attrs, slog.Any("cause", reject.Cause))
 			}
 			if config.Attributes != nil {
 				attrs = append(attrs, slog.Attr{Key: "attributes", Value: slog.GroupValue(config.Attributes(ctx, delivery, result, err)...)})
@@ -84,6 +97,9 @@ func processingLogLevel(result Disposition, err error) slog.Level {
 		return slog.LevelError
 	}
 	if _, retry := result.(RetryAfter); retry {
+		return slog.LevelWarn
+	}
+	if _, reject := result.(Reject); reject {
 		return slog.LevelWarn
 	}
 	return slog.LevelInfo
@@ -113,6 +129,8 @@ func processingOutcome(result Disposition, err error) string {
 		return "handled"
 	case RetryAfter:
 		return "retry_requested"
+	case Reject:
+		return "reject_requested"
 	default:
 		return "returned"
 	}

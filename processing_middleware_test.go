@@ -141,6 +141,8 @@ func TestLogProcessingSuccessAndSeverityPolicy(t *testing.T) {
 			count: 1, level: slog.LevelWarn, outcome: "retry_requested"},
 		{name: "retry without cause", result: broker.RetryAfter{Delay: time.Second},
 			count: 1, level: slog.LevelWarn, outcome: "retry_requested"},
+		{name: "reject", result: broker.Reject{Cause: cause},
+			count: 1, level: slog.LevelWarn, outcome: "reject_requested"},
 		{name: "custom result", result: privateDisposition{secret: "private-result"}, config: broker.ProcessingLogConfig{LogSuccess: true},
 			count: 1, level: slog.LevelInfo, outcome: "returned"},
 	}
@@ -166,10 +168,38 @@ func TestLogProcessingSuccessAndSeverityPolicy(t *testing.T) {
 			if retry, ok := test.result.(broker.RetryAfter); ok && retry.Cause != nil && attrs["cause"].Any() != retry.Cause {
 				t.Fatal("retry cause lost")
 			}
+			if reject, ok := test.result.(broker.Reject); ok && reject.Cause != nil && attrs["cause"].Any() != reject.Cause {
+				t.Fatal("rejection cause lost")
+			}
 			if strings.Contains(output.String(), "private-result") || strings.Contains(strings.ToLower(output.String()), "ack") {
 				t.Fatalf("unsafe result or settlement claim: %s", output.String())
 			}
 		})
+	}
+}
+
+func TestLogProcessingOmitsCooperativeCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var output bytes.Buffer
+	handler := broker.NewHandler(func(context.Context, broker.Delivery) (broker.Disposition, error) {
+		return nil, ctx.Err()
+	}).WithMiddleware(broker.LogProcessing(slog.New(slog.NewJSONHandler(&output, nil)), broker.ProcessingLogConfig{}))
+	_, err := handler.Handle(ctx, replyDelivery{})
+	if err != ctx.Err() || output.Len() != 0 {
+		t.Fatalf("error=%v log=%q", err, output.String())
+	}
+}
+
+func TestLogProcessingReportsDispositionFailureStage(t *testing.T) {
+	var output bytes.Buffer
+	cause := &broker.DecodeError{Cause: errors.New("invalid input")}
+	handler := broker.NewHandler(func(context.Context, broker.Delivery) (broker.Disposition, error) {
+		return broker.Reject{Cause: cause}, nil
+	}).WithMiddleware(broker.LogProcessing(slog.New(slog.NewJSONHandler(&output, nil)), broker.ProcessingLogConfig{}))
+	_, err := handler.Handle(context.Background(), replyDelivery{})
+	if err != nil || !strings.Contains(output.String(), `"stage":"decode"`) || !strings.Contains(output.String(), "invalid input") {
+		t.Fatalf("error=%v log=%s", err, output.String())
 	}
 }
 

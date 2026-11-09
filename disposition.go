@@ -17,5 +17,12 @@ type RetryAfter struct {
 	Cause error
 }
 
+// Reject requests terminal rejection for this subscription. It does not promise
+// publication to a dead-letter destination. Cause is optional diagnostic evidence.
+type Reject struct {
+	Cause error
+}
+
 func (Handled) DeliveryDisposition()    {}
 func (RetryAfter) DeliveryDisposition() {}
+func (Reject) DeliveryDisposition()     {}

@@ -22,6 +22,8 @@ Handlers declare requirements such as redelivery, attempt metadata or renewal.
 Consumers validate the complete combination before processing. A shared
 disposition does not imply identical native behavior: Azure supports immediate
 abandonment for `RetryAfter`, while SQS accepts whole-second visibility delays.
+JetStream supports `Reject` as terminal delivery; SQS and Azure do not support
+that requirement. Validate the handler before starting service components.
 Consult the adapter guide before selecting a policy.
 
 Native metadata is available through adapter-specific read-only interfaces.
