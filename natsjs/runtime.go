@@ -347,6 +347,11 @@ func (r *consumerRun) validateResult(
 			return OperationTerm, fieldFailure("TerminationRequirement", "undeclared", errors.New("TerminationRequirement: undeclared"))
 		}
 		return OperationTerm, nil
+	case broker.Reject:
+		if !required.rejection {
+			return OperationTerm, fieldFailure("RejectRequirement", "undeclared", errors.New("RejectRequirement: undeclared"))
+		}
+		return OperationTerm, nil
 	default:
 		return OperationDisposition, fieldFailure("Disposition", "unsupported_disposition", fmt.Errorf("unsupported disposition %T", result))
 	}
@@ -366,7 +371,7 @@ func (r *consumerRun) settle(
 		err = message.AckSync(nats.Context(bounded))
 	case broker.RetryAfter:
 		err = message.NakWithDelay(value.Delay, nats.Context(bounded))
-	case Terminate:
+	case Terminate, broker.Reject:
 		err = message.Term(nats.Context(bounded))
 	}
 	status := OutcomeConfirmed
@@ -419,6 +424,8 @@ func dispositionCause(result broker.Disposition) error {
 		return value.Cause
 	case Terminate:
 		return value.Cause
+	case broker.Reject:
+		return value.Cause
 	}
 	return nil
 }
@@ -429,7 +436,7 @@ func terminalName(result broker.Disposition) string {
 		return OperationAck
 	case broker.RetryAfter:
 		return OperationNak
-	case Terminate:
+	case Terminate, broker.Reject:
 		return OperationTerm
 	default:
 		return OperationDisposition

@@ -709,7 +709,7 @@ func TestRunServiceForcedStopSuppressesAllDispositions(t *testing.T) {
 }
 
 func TestRunServiceFailedTerminalRetainsDispositionCause(t *testing.T) {
-	for _, mode := range []string{"retry", "terminate"} {
+	for _, mode := range []string{"retry", "terminate", "reject"} {
 		t.Run(
 			mode,
 			func(t *testing.T) {
@@ -734,11 +734,14 @@ func TestRunServiceFailedTerminalRetainsDispositionCause(t *testing.T) {
 								Cause: cause,
 							}, nil
 						}
+						if mode == "reject" {
+							return broker.Reject{Cause: cause}, nil
+						}
 						return natsjs.Terminate{
 							Cause: cause,
 						}, nil
 					},
-					broker.WithRequirements(broker.RedeliveryRequirement{}, natsjs.TerminationRequirement{}),
+					broker.WithRequirements(broker.RedeliveryRequirement{}, natsjs.TerminationRequirement{}, broker.RejectRequirement{}),
 				)
 				result := startServiceConsumer(t, nc, js, config, parent, handler)
 				receive(t, admitted)
@@ -750,7 +753,7 @@ func TestRunServiceFailedTerminalRetainsDispositionCause(t *testing.T) {
 				if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, cause) {
 					t.Fatalf("terminal failure lost its causes: %v", err)
 				}
-				if mode == "terminate" {
+				if mode == "terminate" || mode == "reject" {
 					awaitReadback(
 						t,
 						func() error {

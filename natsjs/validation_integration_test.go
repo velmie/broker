@@ -25,6 +25,7 @@ func TestInvalidOrUndeclaredResultsLeaveDeliveryPending(t *testing.T) {
 		{"typed_nil", nilHandled, nil},
 		{"external", externalResult{}, nil},
 		{"undeclared_termination", natsjs.Terminate{}, nil},
+		{"undeclared_reject", broker.Reject{}, nil},
 		{"undeclared_retry", broker.RetryAfter{}, nil},
 		{"negative_delay", broker.RetryAfter{Delay: -time.Nanosecond}, []broker.Requirement{broker.RedeliveryRequirement{}}},
 		{"overflow_delay", broker.RetryAfter{Delay: time.Duration(math.MaxInt64)}, []broker.Requirement{broker.RedeliveryRequirement{}}},

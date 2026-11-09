@@ -174,6 +174,44 @@ func TestDynamicRetryAndNativeTermination(t *testing.T) {
 	}
 }
 
+func TestRejectTerminatesDelivery(t *testing.T) {
+	nc, js, config := provision(t, 200*time.Millisecond)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	cause := errors.New("invalid order")
+	confirmed := make(chan struct{})
+	config.Observer.Record = func(_ context.Context, event natsjs.Observation) {
+		if event.Operation == natsjs.OperationTerm && event.Outcome == natsjs.OutcomeConfirmed {
+			if !errors.Is(event.Cause, cause) {
+				t.Error("rejection cause lost")
+			}
+			close(confirmed)
+		}
+	}
+	h := broker.NewHandler(func(context.Context, broker.Delivery) (broker.Disposition, error) {
+		return broker.Reject{Cause: cause}, nil
+	}, broker.WithRequirements(broker.RejectRequirement{}))
+	c, err := natsjs.NewConsumer(nc, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = js.Publish(config.Subject, []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() { result <- c.RunService(ctx, h) }()
+	receive(t, confirmed)
+	time.Sleep(500 * time.Millisecond)
+	stop()
+	if err = receive(t, result); err != nil {
+		t.Fatal(err)
+	}
+	info, err := js.ConsumerInfo(config.Stream, config.Consumer)
+	if err != nil || info.NumAckPending != 0 || info.NumRedelivered != 0 {
+		t.Fatalf("rejection readback: %+v, %v", info, err)
+	}
+}
+
 func provision(t *testing.T, ackWait time.Duration) (*nats.Conn, nats.JetStreamContext, natsjs.ConsumerConfig) {
 	t.Helper()
 	nc, err := nats.Connect(serverURL, nats.Timeout(testTimeout), nats.FlusherTimeout(time.Second), nats.NoReconnect())

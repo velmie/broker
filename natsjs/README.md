@@ -98,12 +98,14 @@ but an actual failed terminal operation retains both causes.
 | --- | --- |
 | `broker.Handled{}` | `AckSync` waits for an acknowledgment response |
 | `broker.RetryAfter{Delay: delay}` with `RedeliveryRequirement` | Requests native delayed NAK; zero requests immediate redelivery |
+| `broker.Reject{}` with `broker.RejectRequirement` | Requests native TERM; does not publish to a dead-letter destination |
 | `natsjs.Terminate{}` with `natsjs.TerminationRequirement` | Requests native TERM; does not publish to a dead-letter destination |
 | `broker.AttemptsRequirement{}` | Exposes one-based transport delivery attempts |
 | `broker.WithKeepAlive(interval)` | Sends progress acknowledgments while admitted processing runs |
 
 Use concrete value forms. Unknown or nil dispositions, undeclared capabilities,
 invalid delays and retries beyond a finite `MaxDeliver` fail without settlement.
+Prefer `broker.Reject` when the provider-neutral decision meets the handler's needs.
 Equal requirements are idempotent; conflicting renewal intervals are invalid.
 Renewal cadence must be positive and shorter than remote `AckWait`.
 

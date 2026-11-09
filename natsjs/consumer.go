@@ -270,6 +270,7 @@ func (c *Consumer) handleFetchError(
 type requirements struct {
 	redelivery  bool
 	termination bool
+	rejection   bool
 	keepAlive   time.Duration
 }
 
@@ -351,6 +352,8 @@ func parseRequirements(values []broker.Requirement) (requirements, error) {
 		case broker.AttemptsRequirement:
 		case TerminationRequirement:
 			result.termination = true
+		case broker.RejectRequirement:
+			result.rejection = true
 		case broker.KeepAliveRequirement:
 			if value.Interval <= 0 {
 				return result, fieldFailure("KeepAliveRequirement.Interval", "must_be_positive",

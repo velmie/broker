@@ -13,7 +13,8 @@ import (
 )
 
 // Terminate requests native JetStream termination. Cause retains optional
-// diagnostic evidence. Termination does not publish to a DLQ.
+// diagnostic evidence. Termination does not publish to a DLQ. Prefer
+// broker.Reject when a provider-neutral decision is sufficient.
 type Terminate struct{ Cause error }
 
 // TerminationRequirement declares use of Terminate.
