@@ -4,9 +4,9 @@ go 1.26.0
 
 require (
 	github.com/nats-io/nats.go v1.54.0
-	github.com/velmie/broker v1.3.0-rc.5
-	github.com/velmie/broker/natsjs/v4 v4.0.0-rc.2
-	github.com/velmie/broker/otelbroker v1.1.0-rc.4
+	github.com/velmie/broker v1.3.0
+	github.com/velmie/broker/natsjs/v4 v4.0.0
+	github.com/velmie/broker/otelbroker v1.1.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/metric v1.45.0
 	go.opentelemetry.io/otel/sdk/metric v1.45.0
