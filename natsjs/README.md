@@ -271,9 +271,44 @@ deliveries. Other native topology requirements are checked as well.
 NATS server 2.10.0 or newer is required.
 
 `DurableConsumerConfig.StartTime` sets the earliest message time only when a
-durable is created. Its zero value starts from the beginning of the stream.
+durable is created. Its zero value starts from the beginning of the stream when
+`DeliverNew` is false.
 An existing durable retains its position and resumes from its acknowledgement
 floor, regardless of its original start policy or the supplied `StartTime`.
+
+### Start with new messages
+
+Use `DeliverNew` to receive only messages published after a durable is created.
+Unlike `StartTime: time.Now()`, this uses the server's creation position and is
+not affected by clock skew between the client and server. `DeliverNew` and a
+non-zero `StartTime` cannot be combined. Both fields apply only on creation. An
+existing durable keeps its delivery policy and acknowledgement position.
+
+```go
+package messaging
+
+import (
+	"context"
+	"time"
+
+	"github.com/nats-io/nats.go/jetstream"
+	"github.com/velmie/broker/natsjs/v4"
+)
+
+func EnsureNotifications(ctx context.Context, js jetstream.JetStream) error {
+	return natsjs.EnsureDurableConsumer(ctx, js, natsjs.DurableConsumerConfig{
+		Stream:        "EVENTS",
+		Durable:       "notifications",
+		Subjects:      []string{"events.created"},
+		AckWait:       time.Minute,
+		MaxDeliveries: 5,
+		MaxAckPending: 10,
+		DeliverNew:    true,
+	})
+}
+```
+
+### Start at a time
 
 For an externally owned retained stream, verify its retention and size settings
 with `RequireRetainedStream`, then use `EnsureDurableConsumer` to verify that the

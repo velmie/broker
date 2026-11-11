@@ -105,6 +105,7 @@ func TestEnsureDurableConsumerAcceptsExistingStartPositions(t *testing.T) {
 		jetstream.DeliverByStartSequencePolicy,
 	} {
 		t.Run(policy.String(), func(t *testing.T) {
+			cfg := cfg
 			actual := jetstream.ConsumerConfig{
 				Name:          "worker",
 				Durable:       "worker",
@@ -138,6 +139,11 @@ func TestEnsureDurableConsumerAcceptsExistingStartPositions(t *testing.T) {
 			}
 			if err := natsjs.EnsureDurableConsumer(context.Background(), js, cfg); err != nil {
 				t.Fatalf("existing start policy %v rejected: %v", policy, err)
+			}
+			cfg.StartTime = time.Time{}
+			cfg.DeliverNew = true
+			if err := natsjs.EnsureDurableConsumer(context.Background(), js, cfg); err != nil {
+				t.Fatalf("existing start policy %v rejected with DeliverNew: %v", policy, err)
 			}
 		})
 	}

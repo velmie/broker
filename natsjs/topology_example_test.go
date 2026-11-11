@@ -72,3 +72,17 @@ func ExampleConsumerConfig() {
 	fmt.Println(len(config.Subjects))
 	// Output: 2
 }
+
+func ExampleDurableConsumerConfig_deliverNew() {
+	config := natsjs.DurableConsumerConfig{
+		Stream:        "EVENTS",
+		Durable:       "notifications",
+		Subjects:      []string{"events.created"},
+		AckWait:       time.Minute,
+		MaxDeliveries: 5,
+		MaxAckPending: 10,
+		DeliverNew:    true,
+	}
+	fmt.Println(config.Validate() == nil)
+	// Output: true
+}

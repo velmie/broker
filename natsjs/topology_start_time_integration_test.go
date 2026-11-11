@@ -1,6 +1,7 @@
 package natsjs_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -144,6 +145,11 @@ func TestEnsureDurableConsumerPreservesExistingDeliverNew(t *testing.T) {
 	if err = natsjs.EnsureDurableConsumer(ctx, js, cfg); err != nil {
 		t.Fatal(err)
 	}
+	cfg.StartTime = time.Time{}
+	cfg.DeliverNew = true
+	if err = natsjs.EnsureDurableConsumer(ctx, js, cfg); err != nil {
+		t.Fatal(err)
+	}
 	existing, err := js.Consumer(ctx, cfg.Stream, cfg.Durable)
 	if err != nil {
 		t.Fatal(err)
@@ -167,5 +173,78 @@ func TestEnsureDurableConsumerPreservesExistingDeliverNew(t *testing.T) {
 	}
 	if len(bodies) != 1 || bodies[0] != "second" {
 		t.Fatalf("resumed deliveries = %v, want only second", bodies)
+	}
+}
+
+func TestDurableConsumerDeliverNew(t *testing.T) {
+	conn, err := nats.Connect(serverURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(conn.Close)
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	_, err = js.CreateStream(ctx, jetstream.StreamConfig{
+		Name:     "DELIVER_NEW_TEST",
+		Subjects: []string{"deliver.new"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = js.Publish(ctx, "deliver.new", []byte("before")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := natsjs.DurableConsumerConfig{
+		Stream:        "DELIVER_NEW_TEST",
+		Durable:       "worker",
+		Subjects:      []string{"deliver.new"},
+		AckWait:       time.Second,
+		MaxDeliveries: 3,
+		MaxAckPending: 1,
+		DeliverNew:    true,
+	}
+	if err = natsjs.EnsureDurableConsumer(ctx, js, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = js.Publish(ctx, "deliver.new", []byte("after")); err != nil {
+		t.Fatal(err)
+	}
+	consumer, err := js.Consumer(ctx, cfg.Stream, cfg.Durable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := consumer.Fetch(1, jetstream.FetchMaxWait(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bodies []string
+	for message := range batch.Messages() {
+		bodies = append(bodies, string(message.Data()))
+	}
+	if err = batch.Error(); err != nil {
+		t.Fatal(err)
+	}
+	if len(bodies) != 1 || bodies[0] != "after" {
+		t.Fatalf("delivered %v, want only after", bodies)
+	}
+}
+
+func TestDurableConsumerRejectsConflictingStartPolicies(t *testing.T) {
+	cfg := natsjs.DurableConsumerConfig{
+		Stream:        "EVENTS",
+		Durable:       "worker",
+		Subjects:      []string{"events.created"},
+		AckWait:       time.Second,
+		MaxDeliveries: 3,
+		MaxAckPending: 1,
+		StartTime:     time.Now(),
+		DeliverNew:    true,
+	}
+	if err := natsjs.EnsureDurableConsumer(t.Context(), nil, cfg); err == nil ||
+		!strings.Contains(err.Error(), "deliver_new and start_time cannot both be set") {
+		t.Fatalf("expected conflicting start policies to fail before I/O: %v", err)
 	}
 }

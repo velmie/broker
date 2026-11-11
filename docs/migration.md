@@ -21,8 +21,9 @@ Since v3.3.1, the adapter also provides:
   Connection and topology lifetime remain application-owned.
 - Create-or-verify topology profiles, `RequireRetainedStream` and availability-only
   `CheckStreams`. Verification fails on incompatible topology without updating it.
-- `DurableConsumerConfig.StartTime` for a newly created consumer. Existing
-  consumers retain their position and delivery policy.
+- `DurableConsumerConfig.StartTime` or `DeliverNew` for a newly created consumer.
+  `DeliverNew` starts with messages published after creation without relying on
+  the client clock. Existing consumers retain their position and delivery policy.
 - Provider-neutral `broker.Reject` settlement through native TERM, alongside the
   adapter's native termination API.
 - Optional native settlement instrumentation in the `otelnatsjs` module.

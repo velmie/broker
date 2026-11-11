@@ -56,8 +56,12 @@ type DurableConsumerConfig struct {
 	MaxDeliveries int           `k:"max_deliveries" validate:"eq=-1|gt=0"`
 	MaxAckPending int           `k:"max_ack_pending" hint:"Maximum unacknowledged messages when creating the consumer" validate:"gt=0"`
 	// StartTime selects the earliest message time for a newly created consumer.
-	// Zero starts from the beginning. Existing consumers retain their position.
+	// Zero starts from the beginning unless DeliverNew is set. Existing consumers
+	// retain their position.
 	StartTime time.Time `k:"-"`
+	// DeliverNew starts after consumer creation. It cannot be combined with
+	// StartTime and has no effect on an existing consumer.
+	DeliverNew bool `k:"-"`
 }
 
 // Validate checks the profile without I/O.
@@ -110,6 +114,9 @@ func (cfg DurableConsumerConfig) Validate() error {
 		failures.add("max_deliveries", ruleOneOf, "max_deliveries must equal -1 or be greater than 0")
 	}
 	failures.positive("max_ack_pending", int64(cfg.MaxAckPending))
+	if cfg.DeliverNew && !cfg.StartTime.IsZero() {
+		failures.add("deliver_new", ruleOneOf, "deliver_new and start_time cannot both be set")
+	}
 	return failures.err()
 }
 
@@ -220,7 +227,7 @@ func RequireRetainedStream(ctx context.Context, js jetstream.JetStream, cfg Reta
 }
 
 // EnsureDurableConsumer creates a missing durable or verifies it without updating it.
-// StartTime applies only on creation. An existing durable resumes from its
+// StartTime and DeliverNew apply only on creation. An existing durable resumes from its
 // acknowledgement floor, regardless of its original starting position.
 //
 //nolint:gocritic // Preserve the value configuration contract.
@@ -262,7 +269,9 @@ func EnsureDurableConsumer(ctx context.Context, js jetstream.JetStream, cfg Dura
 		} else {
 			createConfig.FilterSubjects = cfg.Subjects
 		}
-		if !cfg.StartTime.IsZero() {
+		if cfg.DeliverNew {
+			createConfig.DeliverPolicy = jetstream.DeliverNewPolicy
+		} else if !cfg.StartTime.IsZero() {
 			createConfig.DeliverPolicy = jetstream.DeliverByStartTimePolicy
 			createConfig.OptStartTime = &cfg.StartTime
 		}
