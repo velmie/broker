@@ -16,7 +16,7 @@ import (
 )
 
 func TestRecoverPanicsRetainsCauseAndStackWithoutRetry(t *testing.T) {
-	typed := &processingFailure{field: "account_id", entity: "order-7", secret: "secret-token"}
+	typed := &processingFailure{field: "account_id", entity: "order-7"}
 	for _, value := range []any{typed, "secret-panic", nil} {
 		calls := 0
 		handler := broker.NewHandler(func(context.Context, broker.Delivery) (broker.Disposition, error) {
@@ -68,8 +68,8 @@ func TestProcessingMiddlewarePreservesOrdinaryDelegation(t *testing.T) {
 	}
 }
 
-func TestLogProcessingPreservesAndRedactsOriginalFailure(t *testing.T) {
-	cause := &processingFailure{field: "account_id", entity: "order-7", secret: "private-cause"}
+func TestLogProcessingPreservesSafeOriginalFailure(t *testing.T) {
+	cause := &processingFailure{field: "account_id", entity: "order-7"}
 	staged := &broker.StageError{Stage: broker.StagePublish, Cause: cause}
 	var output bytes.Buffer
 	capture := newProcessingCapture(&output)
@@ -104,7 +104,7 @@ func TestLogProcessingPreservesAndRedactsOriginalFailure(t *testing.T) {
 	}
 	assertProcessingFields(t, attrs, "failed", broker.StagePublish)
 	text := output.String()
-	for _, forbidden := range []string{"private-cause", "private-body", "private-header",
+	for _, forbidden := range []string{"private-body", "private-header",
 		"password", "query-secret", "fragment-secret", "user:"} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("serialized diagnostics expose %q: %s", forbidden, text)
@@ -254,7 +254,7 @@ func TestLogProcessingCustomAttributesAndSafeSource(t *testing.T) {
 }
 
 func TestLogProcessingSelectsAttributesFromOutcome(t *testing.T) {
-	cause := &processingFailure{field: "account_id", entity: "order-7", secret: "private-cause"}
+	cause := &processingFailure{field: "account_id", entity: "order-7"}
 	staged := &broker.StageError{Stage: broker.StageHandle, Cause: cause}
 	for _, test := range []struct {
 		name   string
@@ -345,7 +345,7 @@ func TestLogProcessingDisabledRecordsDoNotSelectAttributes(t *testing.T) {
 }
 
 func TestLogProcessingSelectorInspectsRecoveredPanic(t *testing.T) {
-	cause := &processingFailure{field: "account_id", entity: "order-7", secret: "private-panic"}
+	cause := &processingFailure{field: "account_id", entity: "order-7"}
 	var output bytes.Buffer
 	capture := newProcessingCapture(&output)
 	calls := 0
@@ -370,15 +370,15 @@ func TestLogProcessingSelectorInspectsRecoveredPanic(t *testing.T) {
 			t.Errorf("serialized diagnostic lost %q: %s", wanted, output.String())
 		}
 	}
-	if strings.Contains(output.String(), "private-panic") {
-		t.Fatalf("panic value exposed: %s", output.String())
-	}
 }
 
-type processingFailure struct{ field, entity, secret string }
+type processingFailure struct {
+	field  string
+	entity string
+}
 
 func (e *processingFailure) Error() string {
-	return "dependency rejected field " + e.field + ": " + e.secret
+	return "dependency rejected field " + e.field + " for " + e.entity
 }
 
 type processingDelivery struct {
@@ -405,19 +405,7 @@ func (h *processingCapture) Handle(ctx context.Context, record slog.Record) erro
 }
 
 func newProcessingCapture(output *bytes.Buffer) *processingCapture {
-	options := &slog.HandlerOptions{ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
-		err, ok := attr.Value.Any().(error)
-		if !ok {
-			return attr
-		}
-		var failure *processingFailure
-		if errors.As(err, &failure) {
-			return slog.Group(attr.Key, slog.String("message", "dependency rejected field"),
-				slog.String("field", failure.field), slog.String("entity", failure.entity))
-		}
-		return slog.String(attr.Key, err.Error())
-	}}
-	return &processingCapture{Handler: slog.NewJSONHandler(output, options)}
+	return &processingCapture{Handler: slog.NewJSONHandler(output, nil)}
 }
 
 func processingAttrs(record *slog.Record) map[string]slog.Value {

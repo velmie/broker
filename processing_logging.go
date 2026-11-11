@@ -14,7 +14,7 @@ const maxDiagnosticSourceBytes = 256
 
 // ProcessingLogConfig configures optional processing records. The callbacks must
 // support consumer concurrency and must not panic. They cannot change delivery
-// policy. The configured slog handler owns sink-failure handling and redaction.
+// policy. The configured slog handler owns sink-failure handling.
 type ProcessingLogConfig struct {
 	// LogSuccess includes successful callback results. It never claims ACK.
 	LogSuccess bool
@@ -27,7 +27,7 @@ type ProcessingLogConfig struct {
 	// outcome while Delivery is valid. A non-nil error suppresses any disposition;
 	// RetryAfter.Cause or Reject.Cause can explain the requested disposition when
 	// the error is nil. It is not called for cooperative cancellation.
-	// They are grouped under "attributes" and still require boundary redaction.
+	// They are grouped under "attributes" and must be safe to log.
 	// Bodies, headers and message/correlation IDs are not included by default.
 	Attributes func(context.Context, Delivery, Disposition, error) []slog.Attr
 }
@@ -39,9 +39,9 @@ type ProcessingLogConfig struct {
 // and ctx.Err() must be non-nil. Wrapped errors are logged. Processing results
 // do not establish a later transport outcome. Observe those at the adapter.
 //
-// Logger is required. Its handler must redact application-specific errors and
-// custom attributes, retaining safe field/entity details. Standard slog ignores
-// handler return errors, so the handler must report its sink failures itself.
+// Logger is required. Errors and custom attributes must be safe when created;
+// this middleware logs them unchanged. Standard slog ignores handler return
+// errors, so the handler must report its sink failures itself.
 // Logger handlers and config callbacks must not panic or block waiting for their
 // own consumer. Wrap RecoverPanics inside this middleware for processing panics.
 func LogProcessing(logger *slog.Logger, config ProcessingLogConfig) HandlerMiddleware {

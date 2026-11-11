@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -45,45 +46,49 @@ func TestCallbackCleanupAndObserverFailuresRetainIndependentCauses(t *testing.T)
 	assertPending(t, js, config, 1)
 }
 
-func TestProcessingLoggerRetainsOriginalCauseBeforeStructuredRedaction(t *testing.T) {
-	nc, js, config := provision(t, time.Second)
-	cause := &fieldFailure{field: "sku", entity: "order-7", privateValue: "secret-value\nforged-record"}
-	var log bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&log, &slog.HandlerOptions{ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
-		if attr.Key == "error" {
-			original, ok := attr.Value.Any().(error)
-			var failure *fieldFailure
-			if !ok || !errors.As(original, &failure) {
-				t.Error("logger did not receive original error object")
-				return slog.String("error", "invalid diagnostic")
+func TestProcessingLoggerRetainsSafeOriginalCause(t *testing.T) {
+	for _, format := range []struct {
+		name    string
+		handler func(io.Writer) slog.Handler
+	}{
+		{
+			name:    "json",
+			handler: func(output io.Writer) slog.Handler { return slog.NewJSONHandler(output, nil) },
+		},
+		{
+			name:    "text",
+			handler: func(output io.Writer) slog.Handler { return slog.NewTextHandler(output, nil) },
+		},
+	} {
+		t.Run(format.name, func(t *testing.T) {
+			nc, js, config := provision(t, time.Second)
+			cause := &fieldFailure{field: "sku", entity: "order-7"}
+			var log bytes.Buffer
+			logger := slog.New(format.handler(&log))
+			config.Observer.Record = func(_ context.Context, event natsjs.Observation) {
+				if event.Operation == natsjs.OperationProcess && event.Outcome == natsjs.OutcomeFailed &&
+					!errors.Is(event.Err, cause) {
+					t.Error("original processing cause lost")
+				}
 			}
-			return slog.Group("error", slog.String("reason", "invalid inventory reference"),
-				slog.String("field", failure.field), slog.String("entity", failure.entity))
-		}
-		return attr
-	}}))
-	config.Observer.Record = func(_ context.Context, event natsjs.Observation) {
-		if event.Operation == natsjs.OperationProcess && event.Outcome == natsjs.OutcomeFailed {
-			if !errors.Is(event.Err, cause) {
-				t.Error("original processing cause lost")
+			h := broker.NewTypedHandler(broker.DecodeJSON[struct{}], func(context.Context, struct{}) error {
+				return cause
+			}).WithMiddleware(broker.LogProcessing(logger, broker.ProcessingLogConfig{}))
+			err := receive(t, startConsumer(t, nc, js, config, context.Background(), h,
+				`{"private":"secret-value\nforged-record"}`))
+			if !errors.Is(err, cause) {
+				t.Fatal(err)
 			}
-		}
-	}
-	h := broker.NewTypedHandler(broker.DecodeJSON[struct{}], func(context.Context, struct{}) error { return cause }).WithMiddleware(
-		broker.LogProcessing(logger, broker.ProcessingLogConfig{}),
-	)
-	err := receive(t, startConsumer(t, nc, js, config, context.Background(), h, `{}`))
-	if !errors.Is(err, cause) {
-		t.Fatal(err)
-	}
-	serialized := log.String()
-	for _, expected := range []string{"sku", "order-7", "invalid inventory reference", config.Stream, "process"} {
-		if !strings.Contains(serialized, expected) {
-			t.Errorf("missing %q in diagnostic %s", expected, serialized)
-		}
-	}
-	if strings.Contains(serialized, "secret-value") || strings.Contains(serialized, "forged-record") {
-		t.Fatalf("sensitive input serialized: %s", serialized)
+			serialized := log.String()
+			for _, expected := range []string{"sku", "order-7", "invalid inventory reference", config.Stream, "process"} {
+				if !strings.Contains(serialized, expected) {
+					t.Errorf("missing %q in diagnostic %s", expected, serialized)
+				}
+			}
+			if strings.Contains(serialized, "secret-value") || strings.Contains(serialized, "forged-record") {
+				t.Fatalf("sensitive input serialized: %s", serialized)
+			}
+		})
 	}
 }
 
@@ -115,7 +120,7 @@ func TestObserverPanicDoesNotChangeSuccessfulDisposition(t *testing.T) {
 
 func TestRecoveredProcessingPanicRetainsCauseWithoutSettlement(t *testing.T) {
 	nc, js, config := provision(t, time.Second)
-	cause := &fieldFailure{field: "sku", entity: "order-7", privateValue: "secret-value"}
+	cause := &fieldFailure{field: "sku", entity: "order-7"}
 	var callbacks, terminals int
 	var observed error
 	config.Observer.Record = func(_ context.Context, event natsjs.Observation) {
@@ -148,8 +153,11 @@ func TestRecoveredProcessingPanicRetainsCauseWithoutSettlement(t *testing.T) {
 	assertPending(t, js, config, 1)
 }
 
-type fieldFailure struct{ field, entity, privateValue string }
+type fieldFailure struct {
+	field  string
+	entity string
+}
 
 func (e *fieldFailure) Error() string {
-	return e.field + " for " + e.entity + ": invalid reference " + e.privateValue
+	return e.field + " for " + e.entity + ": invalid inventory reference"
 }

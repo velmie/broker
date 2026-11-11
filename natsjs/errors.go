@@ -9,9 +9,8 @@ import (
 // OperationError identifies a failed native operation and preserves its original
 // cause. Run handles recognized pull receive interruptions internally. An error
 // returned by Run does not by itself establish that restarting the run or
-// replaying a delivery is safe. A cause can contain application data. Logging
-// adapters must inspect and redact it before serialization, preserving safe
-// operation, source and field details.
+// replaying a delivery is safe. Causes are retained unchanged, including any
+// descriptions supplied by a NATS server.
 type OperationError struct {
 	Source    string
 	Operation string

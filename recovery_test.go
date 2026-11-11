@@ -267,8 +267,8 @@ func TestConsumerRecoveryCancellationDuringBackoffCreatesNoReplacement(t *testin
 	}
 }
 
-func TestConsumerRecoveryLogsOriginalFailureWithApplicationRedaction(t *testing.T) {
-	cause := &processingFailure{field: "account_id", entity: "order-7", secret: "private-cause"}
+func TestConsumerRecoveryLogsSafeOriginalFailure(t *testing.T) {
+	cause := &processingFailure{field: "account_id", entity: "order-7"}
 	var output bytes.Buffer
 	capture := newProcessingCapture(&output)
 	factories := 0
@@ -299,7 +299,7 @@ func TestConsumerRecoveryLogsOriginalFailureWithApplicationRedaction(t *testing.
 		attrs["backoff"].Kind() != slog.KindDuration {
 		t.Fatalf("restart context lost: %+v", attrs)
 	}
-	for _, value := range []string{"private-cause", "private-query", "private-fragment"} {
+	for _, value := range []string{"private-query", "private-fragment"} {
 		if strings.Contains(output.String(), value) {
 			t.Fatalf("unsafe diagnostic: %s", output.String())
 		}
