@@ -1,7 +1,6 @@
 package natsjs_test
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -71,21 +70,6 @@ func TestConnectionValidationReportsPreciseFieldsAndRules(t *testing.T) {
 				t.Fatalf("field violation: %#v (%v)", field, err)
 			}
 		})
-	}
-}
-
-func TestOpenConnectionRejectsNilLogger(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	cfg := natsjs.ConnectionConfig{
-		URL:            "nats://127.0.0.1:4222",
-		TLSMode:        "disabled",
-		ConnectTimeout: time.Second,
-		ReconnectWait:  time.Second,
-		InboxPrefix:    "_INBOX",
-	}
-	if _, err := natsjs.OpenConnection(ctx, cfg, nil); err == nil || !strings.Contains(err.Error(), "logger") {
-		t.Fatalf("expected missing logger error: %v", err)
 	}
 }
 

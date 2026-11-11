@@ -37,7 +37,7 @@ func Configure(
 }
 ```
 
-`NewObserver` rejects a nil meter or logger. A meter provider and a logger
+`NewObserver` requires a meter and logger. A meter provider and a logger
 handler configured for the application's telemetry pipeline are required for
 production. Consumer configuration and lifecycle remain with the application.
 

@@ -125,19 +125,3 @@ func TestObserverCountsCompletedAttemptsAndLogsNativeFailures(t *testing.T) {
 		t.Fatalf("diagnostics=%s", output.String())
 	}
 }
-
-func TestNewObserverRejectsMissingDependencies(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	provider := sdkmetric.NewMeterProvider()
-	defer func() {
-		if err := provider.Shutdown(context.Background()); err != nil {
-			t.Error(err)
-		}
-	}()
-	if _, err := otelnatsjs.NewObserver(nil, logger); err == nil || !strings.Contains(err.Error(), "meter") {
-		t.Fatalf("nil meter: %v", err)
-	}
-	if _, err := otelnatsjs.NewObserver(provider.Meter("test"), nil); err == nil || !strings.Contains(err.Error(), "logger") {
-		t.Fatalf("nil logger: %v", err)
-	}
-}

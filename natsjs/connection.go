@@ -84,13 +84,10 @@ func (cfg ConnectionConfig) Validate() error {
 
 // OpenConnection opens a connection whose dialing is governed by ctx, including reconnects.
 // The context must outlive the connection. Close the connection after its users join.
-// A nil logger is rejected.
+// Logger is required.
 //
 //nolint:gocritic // The configuration is intentionally a value contract.
 func OpenConnection(ctx context.Context, cfg ConnectionConfig, logger *slog.Logger) (*nats.Conn, error) {
-	if logger == nil {
-		return nil, errors.New("logger is required")
-	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}

@@ -3,7 +3,6 @@ package otelnatsjs
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -29,12 +28,6 @@ const (
 // consumer, exporter or shutdown. Meter and logger must be non-nil. The caller
 // owns the supplied instrumentation.
 func NewObserver(meter metric.Meter, logger *slog.Logger) (native.Observer, error) {
-	if meter == nil {
-		return native.Observer{}, errors.New("meter is required")
-	}
-	if logger == nil {
-		return native.Observer{}, errors.New("logger is required")
-	}
 	counter, err := meter.Int64Counter(
 		settlementCounterName,
 		metric.WithUnit("{attempt}"),
