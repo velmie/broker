@@ -63,6 +63,7 @@ disposable resources or explicitly dedicated entities:
 
 | Example | Service and guide |
 | --- | --- |
+| Multiple NATS filters | [NATS with JetStream](../natsjs/README.md#select-multiple-subjects) |
 | Typed command and reply | [NATS with JetStream](../natsjs/README.md#run-the-example) |
 | Native JetStream features | [Caller-owned sessions](../natsjs/cmd/native/README.md) |
 | Visibility and redelivery | [SQS with ElasticMQ](../sqs/README.md#run-the-example) |

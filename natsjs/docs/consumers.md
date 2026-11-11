@@ -8,7 +8,7 @@ policy again. Stream retention and limits determine which messages remain.
 ## Bind an existing durable
 
 Provision a durable pull consumer with explicit acknowledgments before starting
-Broker. `NewConsumer` binds the configured stream, consumer and subject locally.
+Broker. `NewConsumer` binds the configured stream, consumer and subject filters locally.
 It acquires no subscription and creates no remote topology.
 
 `Run` validates the remote configuration, then attaches an owned local pull
@@ -88,7 +88,7 @@ exactly once.
 
 ## Filter by the received subject
 
-A wildcard filter can receive messages on several subjects. Read the actual
+A wildcard or a set of filters can receive messages on several subjects. Read the actual
 subject through `natsjs.SubjectReader`. `Source()` keeps the stream/consumer
 identity used by idempotency keys and tracing.
 

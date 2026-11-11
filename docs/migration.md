@@ -1,4 +1,36 @@
-# Upgrade from the subscriber API
+# Migration guide
+
+## Upgrade NATS v3 to v4
+
+The NATS adapter requires NATS server 2.10.0 or newer. Upgrade every server
+that can host or serve the JetStream consumer before adopting v4. Change imports
+from `github.com/velmie/broker/natsjs/v3` to
+`github.com/velmie/broker/natsjs/v4` and update dependent modules together.
+
+Replace `Subject: "events.created"` with
+`Subjects: []string{"events.created"}` in both `ConsumerConfig` and
+`DurableConsumerConfig`. In serialized topology configuration replace `subject`
+with the `subjects` list. There is no implicit filter and no singular selector.
+Keep the existing stream and durable names. Reusing a compatible durable preserves
+its acknowledgement position. Multiple filters must match the remote set exactly;
+coordinate membership changes with the operator before deploying them. See the
+[filter and permission guidance](../natsjs/README.md#select-multiple-subjects).
+
+Since v3.3.1, the adapter also provides:
+
+- `ConnectionConfig` and `OpenConnection` for configured, verified connections.
+  Connection and topology lifetime remain application-owned.
+- Create-or-verify topology profiles, `RequireRetainedStream` and availability-only
+  `CheckStreams`. Verification fails on incompatible topology without updating it.
+- `DurableConsumerConfig.StartTime` for a newly created consumer. Existing
+  consumers retain their position and delivery policy.
+- Provider-neutral `broker.Reject` settlement through native TERM, alongside the
+  adapter's native termination API.
+- Optional native settlement instrumentation in the `otelnatsjs` module.
+
+Review the [adapter guide](../natsjs/README.md) when adopting these additions.
+
+## Upgrade from the subscriber API
 
 The typed API uses explicit contexts, destination-bound publishers and consumers
 that own native delivery operations. Upgrade application wiring, processing
@@ -212,7 +244,7 @@ See the [Azure dependency manifest](../azuresb/go.mod).
 ## Verify the application
 
 For an existing named ephemeral JetStream pull consumer, use
-`natsjs.NewPullConsumer` with its current stream, name and single filter. Leave
+`natsjs.NewPullConsumer` with its current stream, name and filter set. Leave
 its native lifetime and delivery policy intact. `NewConsumer` retains its
 durable-only contract. Both bindings preserve `Source()` as `stream/consumer`,
 and neither changes remote topology. See [per-instance delivery](../natsjs/docs/consumers.md#receive-a-copy-in-each-instance).

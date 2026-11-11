@@ -3,6 +3,7 @@ package natsjs_test
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/velmie/broker/natsjs/v4"
 )
@@ -36,4 +37,27 @@ func ExampleCheckStreams() {
 	// With no stream names, there is nothing to check.
 	fmt.Println(natsjs.CheckStreams(context.Background(), nil) == nil)
 	// Output: true
+}
+
+func ExampleDurableConsumerConfig() {
+	config := natsjs.DurableConsumerConfig{
+		Stream:        "EVENTS",
+		Durable:       "worker",
+		Subjects:      []string{"events.created", "events.paid"},
+		AckWait:       time.Second,
+		MaxDeliveries: -1,
+		MaxAckPending: 10,
+	}
+	fmt.Println(config.Validate() == nil)
+	// Output: true
+}
+
+func ExampleConsumerConfig() {
+	config := natsjs.ConsumerConfig{
+		Stream:   "EVENTS",
+		Consumer: "worker",
+		Subjects: []string{"events.created", "events.paid"},
+	}
+	fmt.Println(len(config.Subjects))
+	// Output: 2
 }

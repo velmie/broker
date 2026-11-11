@@ -1,8 +1,8 @@
 # NATS JetStream adapter
 
 `github.com/velmie/broker/natsjs/v4` connects Broker publishers and handlers to
-NATS JetStream. It publishes to a bound subject and consumes existing named
-pull or push consumers with explicit acknowledgments. Dependencies are listed in
+NATS JetStream. It requires NATS server 2.10.0 or newer. It publishes to a bound
+subject and consumes existing named pull or push consumers with explicit acknowledgments. Dependencies are listed in
 [go.mod](go.mod).
 
 The application owns the NATS connection and remote topology. Configure a
@@ -68,6 +68,71 @@ Callbacks run sequentially. Prefetched messages waiting for admission have no
 renewal and remain pending if shutdown stops admission. Keep batches small when
 callbacks may be slow. Operation budgets cooperate with the connection's write
 budget and cannot interrupt unresponsive callbacks or hooks.
+
+## Select multiple subjects
+
+`Subjects` is a nonempty set of unique, valid NATS subject filters. Use a
+one-element slice for a single filter. Order has no meaning. Provisioning checks
+that every filter is covered by a stream subject. An existing durable must have
+exactly the requested filters. A mismatch fails without changing the consumer or
+its acknowledgement progress. NATS rejects overlapping filters according to its
+own rules.
+
+For a stream containing `events.*`, provision and bind one durable for two events:
+
+```go
+package messaging
+
+import (
+	"context"
+	"time"
+
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+
+	"github.com/velmie/broker/natsjs/v4"
+)
+
+func BindEvents(ctx context.Context, js jetstream.JetStream, conn *nats.Conn) (*natsjs.Consumer, error) {
+	filters := []string{"events.created", "events.paid"}
+	if err := natsjs.EnsureDurableConsumer(ctx, js, natsjs.DurableConsumerConfig{
+		Stream:        "EVENTS",
+		Durable:       "events-processor",
+		Subjects:      filters,
+		AckWait:       time.Minute,
+		MaxDeliveries: -1,
+		MaxAckPending: 100,
+	}); err != nil {
+		return nil, err
+	}
+	return natsjs.NewConsumer(conn, natsjs.ConsumerConfig{
+		Stream:   "EVENTS",
+		Consumer: "events-processor",
+		Subjects: filters,
+	})
+}
+```
+
+The stream can be externally managed and need not use Broker's retained-stream
+profile. Filters must be covered by its directly bound subjects. Stream retention
+and limits determine how long messages remain available. A change in filter
+membership requires coordinated operator reconfiguration of the durable. Deploying
+a changed configuration alone fails on drift and does not reset progress.
+
+For multiple filters, the selected NATS SDK sends consumer creation to
+`$JS.API.CONSUMER.CREATE.<stream>.<consumer>` without a filter suffix. A domain or
+custom API prefix changes the prefix. Authorization tied to a single filter's
+API-subject suffix does not constrain this request. Operators must authorize the
+named consumer appropriately. The adapter does not change credentials.
+
+From `natsjs`, run the [filter example](cmd/filters/main.go) against a disposable JetStream server:
+
+```sh
+go run ./cmd/filters -url nats://127.0.0.1:4222
+```
+
+The command publishes two selected events and one excluded event, confirms both
+acknowledgements, and removes its temporary stream.
 
 ## Shutdown results
 
@@ -141,7 +206,7 @@ methods. Attempt counts describe transport deliveries, not business executions.
 `SubjectReader` exposes the actual received subject. Use it for a
 [wildcard guard before decoding](docs/consumers.md#filter-by-the-received-subject).
 `Delivery.Source()` identifies the bound stream and consumer, so it remains the
-same across subjects matched by one filter.
+same across all subjects matched by its filters.
 
 ## Observations and errors
 
@@ -227,7 +292,7 @@ func EnsureEventsConsumer(ctx context.Context, js jetstream.JetStream, businessW
 	return natsjs.EnsureDurableConsumer(ctx, js, natsjs.DurableConsumerConfig{
 		Stream:        "EVENTS",
 		Durable:       "events-processor",
-		Subjects: []string{"events.created"},
+		Subjects:      []string{"events.created"},
 		AckWait:       time.Minute,
 		MaxDeliveries: 5,
 		MaxAckPending: 10,
@@ -272,7 +337,7 @@ func ConnectOrders(ctx context.Context, cfg natsjs.ConnectionConfig, logger *slo
 		err = natsjs.EnsureDurableConsumer(ctx, js, natsjs.DurableConsumerConfig{
 			Stream:        "ORDERS",
 			Durable:       "processor",
-			Subjects: []string{"orders.created"},
+			Subjects:      []string{"orders.created"},
 			AckWait:       time.Minute,
 			MaxDeliveries: 5,
 			MaxAckPending: 10,

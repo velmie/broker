@@ -12,7 +12,7 @@ access does not transfer acknowledgment authority.
 ## Use Broker's runtime with native push configuration
 
 Provision a named push consumer through the SDK. Set `DeliverSubject`,
-`AckExplicitPolicy` and one `FilterSubject`. Set `DeliverGroup` for competing
+`AckExplicitPolicy` and the intended `FilterSubject` or `FilterSubjects`. Set `DeliverGroup` for competing
 queue members. Bind its stream, name and filter with `NewPushConsumer`.
 
 `Run` reads and validates the existing configuration, then uses its delivery
