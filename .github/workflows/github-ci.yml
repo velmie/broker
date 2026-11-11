@@ -38,7 +38,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: '**/go.sum'
       - name: Check Go formatting
         if: matrix.module == '.'
@@ -86,7 +86,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: '**/go.sum'
       - name: Install linter
         uses: golangci/golangci-lint-action@v9.3.0
@@ -105,7 +105,7 @@ jobs:
           (
             cd "$workspace_dir"
             go work init "$repository_dir" "$repository_dir/natsjs" "$repository_dir/sqs" \
-              "$repository_dir/sns" "$repository_dir/azuresb" "$repository_dir/otelbroker" \
+              "$repository_dir/sns" "$repository_dir/azuresb" "$repository_dir/otelbroker" "$repository_dir/otelbroker/otelnatsjs" \
               "$repository_dir/idempotency" "$repository_dir/idempotency/examples" \
               "$repository_dir/otelbroker/examples" "$repository_dir/sqs/integration"
             # Compose the checked-out module versions for source-level integration.
@@ -119,9 +119,14 @@ jobs:
             GOWORK="$workspace_dir/go.work" go work edit -replace="github.com/velmie/broker/otelbroker@v1.0.0=$repository_dir/otelbroker"
           )
           export GOWORK="$workspace_dir/go.work"
-          for module in . natsjs sqs sns azuresb idempotency otelbroker idempotency/examples otelbroker/examples sqs/integration; do
+          for module in . natsjs sqs sns azuresb idempotency otelbroker otelbroker/otelnatsjs idempotency/examples otelbroker/examples sqs/integration; do
             (
               cd "$module"
+              if [ "$module" = otelbroker/otelnatsjs ]; then
+                fixture_id="$(docker run --rm -d -p 127.0.0.1::4222 "$NATS_TEST_IMAGE" --jetstream)"
+                trap 'docker rm -f "$fixture_id" >/dev/null' EXIT
+                export NATS_TEST_URL="nats://$(docker port "$fixture_id" 4222/tcp)"
+              fi
               go build ./...
               golangci-lint run --config="$repository_dir/.golangci.yml" --modules-download-mode=readonly ./...
               go vet ./...
