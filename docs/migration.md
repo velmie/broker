@@ -107,6 +107,10 @@ uncertain settlement, processing or cleanup failures.
 
 ## Service shutdown results
 
+`LogProcessing` omits cooperative cancellation when the handler returns exactly
+its context's non-nil `Err()` value. Wrapped cancellation errors remain logged.
+The `Level` and `Attributes` callbacks are not invoked for omitted records.
+
 Core v1.2, NATS v3.3, SQS v1.2 and Azure Service Bus v1.2 support `RunService`. For groups
 consisting entirely of supported consumers, replace `Coordinator.Run(ctx)` with `RunService(ctx)` and
 return any non-nil error directly. Successful parent cancellation, deadline or

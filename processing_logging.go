@@ -20,11 +20,13 @@ type ProcessingLogConfig struct {
 	LogSuccess bool
 	// Level overrides severity, for example for expected business rejection.
 	// Default: error for failures, warn for decode/metadata rejection or requested
-	// retry, info for other callback results. It sees original outcome objects.
+	// retry or rejection, info for other callback results. It sees original outcome
+	// objects. It is not called for cooperative cancellation.
 	Level func(Disposition, error) slog.Level
 	// Attributes selects application-approved fields from the original callback
 	// outcome while Delivery is valid. A non-nil error suppresses any disposition;
-	// RetryAfter.Cause can explain a requested retry when the error is nil.
+	// RetryAfter.Cause or Reject.Cause can explain the requested disposition when
+	// the error is nil. It is not called for cooperative cancellation.
 	// They are grouped under "attributes" and still require boundary redaction.
 	// Bodies, headers and message/correlation IDs are not included by default.
 	Attributes func(context.Context, Delivery, Disposition, error) []slog.Attr
@@ -32,8 +34,10 @@ type ProcessingLogConfig struct {
 
 // LogProcessing records callback outcomes with original errors, stage, source
 // and duration. Success is silent unless enabled. RetryAfter.Cause is an error
-// object even when the callback error is nil. Processing success/requested retry
-// does not establish any later transport outcome. Observe those at the adapter.
+// object even when the callback error is nil, as is Reject.Cause. Cooperative
+// cancellation is not logged: the callback error must be identical to ctx.Err()
+// and ctx.Err() must be non-nil. Wrapped errors are logged. Processing results
+// do not establish a later transport outcome. Observe those at the adapter.
 //
 // Logger is required. Its handler must redact application-specific errors and
 // custom attributes, retaining safe field/entity details. Standard slog ignores
