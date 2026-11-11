@@ -72,7 +72,7 @@ func (cfg LimitsStreamConfig) Validate() error {
 func (cfg WorkQueueStreamConfig) Validate() error {
 	var failures configErrors
 	validateTopologyName(&failures, "name", cfg.Name)
-	validateTopologySubject(&failures, cfg.Subject, true)
+	validateTopologySubject(&failures, cfg.Subject)
 	failures.positive("max_message_bytes", int64(cfg.MaxMessageBytes))
 	failures.positive("duplicate_window", int64(cfg.DuplicateWindow))
 	failures.positive("max_messages", cfg.MaxMessages)
@@ -325,9 +325,9 @@ func validateTopologyName(failures *configErrors, field, name string) {
 	}
 }
 
-func validateTopologySubject(failures *configErrors, subject string, filter bool) {
+func validateTopologySubject(failures *configErrors, subject string) {
 	failures.required("subject", subject)
-	if subject != "" && !validConfigSubject(subject, filter) {
+	if subject != "" && !validConfigSubject(subject, true) {
 		failures.add("subject", ruleType, "subject must be a valid NATS subject")
 	}
 }

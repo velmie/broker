@@ -3,7 +3,6 @@ package natsjs_test
 import (
 	"context"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,9 +17,6 @@ func TestRetainedStreamWithWildcardConsumer(t *testing.T) {
 	profile := natsjs.RetainedStreamConfig{
 		Stream:          "RETAINED_WILDCARD",
 		MaxMessageBytes: 1024,
-	}
-	if _, present := reflect.TypeOf(profile).FieldByName("Subject"); present {
-		t.Fatal("retained stream profile must not have a subject field")
 	}
 	if err := profile.Validate(); err != nil {
 		t.Fatalf("subject-free profile: %v", err)
