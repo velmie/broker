@@ -149,7 +149,6 @@ func TestStreamRetentionDriftRejected(t *testing.T) {
 				} else {
 					err = natsjs.RequireRetainedStream(context.Background(), js, natsjs.RetainedStreamConfig{
 						Stream:          "ORDERS",
-						Subject:         "orders.created",
 						MaxMessageBytes: 100,
 					})
 				}

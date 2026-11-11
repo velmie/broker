@@ -267,8 +267,10 @@ durable is created. Its zero value starts from the beginning of the stream.
 An existing durable retains its position and resumes from its acknowledgement
 floor, regardless of its original start policy or the supplied `StartTime`.
 
-For an externally owned retained stream, a new consumer can start at the
-beginning of a business-defined time window:
+For an externally owned retained stream, verify its retention and size settings
+with `RequireRetainedStream`, then use `EnsureDurableConsumer` to verify that the
+stream covers the consumer's filters. A new consumer can start at the beginning
+of a business-defined time window:
 
 ```go
 package messaging
@@ -284,7 +286,6 @@ import (
 func EnsureEventsConsumer(ctx context.Context, js jetstream.JetStream, businessWindow time.Duration) error {
 	if err := natsjs.RequireRetainedStream(ctx, js, natsjs.RetainedStreamConfig{
 		Stream:          "EVENTS",
-		Subject:         "events.created",
 		MaxMessageBytes: 1024 * 1024,
 	}); err != nil {
 		return err
@@ -292,7 +293,7 @@ func EnsureEventsConsumer(ctx context.Context, js jetstream.JetStream, businessW
 	return natsjs.EnsureDurableConsumer(ctx, js, natsjs.DurableConsumerConfig{
 		Stream:        "EVENTS",
 		Durable:       "events-processor",
-		Subjects:      []string{"events.created"},
+		Subjects:      []string{"events.*"},
 		AckWait:       time.Minute,
 		MaxDeliveries: 5,
 		MaxAckPending: 10,

@@ -22,8 +22,19 @@ func ExampleEnsureWorkQueueStream() {
 }
 
 func ExampleRequireRetainedStream() {
-	err := natsjs.RequireRetainedStream(context.Background(), nil, natsjs.RetainedStreamConfig{})
+	err := natsjs.RequireRetainedStream(context.Background(), nil, natsjs.RetainedStreamConfig{
+		Stream: "EVENTS",
+	})
 	fmt.Println(err != nil)
+	// Output: true
+}
+
+func ExampleRetainedStreamConfig() {
+	config := natsjs.RetainedStreamConfig{
+		Stream:          "EVENTS",
+		MaxMessageBytes: 1024 * 1024,
+	}
+	fmt.Println(config.Validate() == nil)
 	// Output: true
 }
 

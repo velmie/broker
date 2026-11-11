@@ -139,16 +139,14 @@ func TestTopologyProfilesValidateRequiredAndPositiveFields(t *testing.T) {
 			reason: "gt",
 		},
 		{
-			name: "retained subject",
+			name: "retained max message bytes",
 			validate: func() error {
 				return (natsjs.RetainedStreamConfig{
-					Stream:          "ORDERS",
-					Subject:         "orders.*",
-					MaxMessageBytes: 1,
+					Stream: "ORDERS",
 				}).Validate()
 			},
-			field:  "subject",
-			reason: "type",
+			field:  "max_message_bytes",
+			reason: "gt",
 		},
 		{
 			name: "consumer deliveries",

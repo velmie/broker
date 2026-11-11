@@ -16,6 +16,10 @@ its acknowledgement position. Multiple filters must match the remote set exactly
 coordinate membership changes with the operator before deploying them. See the
 [filter and permission guidance](../natsjs/README.md#select-multiple-subjects).
 
+Remove `Subject` from `RetainedStreamConfig`. `RequireRetainedStream` verifies
+the stream's retention and size settings, while `EnsureDurableConsumer` checks
+that the stream covers every consumer filter, including wildcard filters.
+
 Since v3.3.1, the adapter also provides:
 
 - `ConnectionConfig` and `OpenConnection` for configured, verified connections.

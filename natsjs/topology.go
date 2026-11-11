@@ -29,10 +29,10 @@ type WorkQueueStreamConfig struct {
 	MaxBytes        int64         `k:"max_bytes" validate:"gt=0"`
 }
 
-// RetainedStreamConfig selects an externally owned retained stream.
+// RetainedStreamConfig selects an externally owned retained stream. Use it with
+// RequireRetainedStream and EnsureDurableConsumer, which verifies filter coverage.
 type RetainedStreamConfig struct {
 	Stream          string `k:"stream" validate:"required"`
-	Subject         string `k:"subject" validate:"required"`
 	MaxMessageBytes int32  `k:"max_message_bytes" validate:"gt=0"`
 }
 
@@ -84,7 +84,6 @@ func (cfg WorkQueueStreamConfig) Validate() error {
 func (cfg RetainedStreamConfig) Validate() error {
 	var failures configErrors
 	validateTopologyName(&failures, "stream", cfg.Stream)
-	validateTopologySubject(&failures, cfg.Subject, false)
 	failures.positive("max_message_bytes", int64(cfg.MaxMessageBytes))
 	return failures.err()
 }
@@ -189,6 +188,7 @@ func EnsureWorkQueueStream(ctx context.Context, js jetstream.JetStream, cfg Work
 }
 
 // RequireRetainedStream verifies an external stream and never creates it.
+// Pair it with EnsureDurableConsumer, which verifies consumer filter coverage.
 func RequireRetainedStream(ctx context.Context, js jetstream.JetStream, cfg RetainedStreamConfig) error {
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -200,16 +200,6 @@ func RequireRetainedStream(ctx context.Context, js jetstream.JetStream, cfg Reta
 	actual := stream.CachedInfo().Config
 	if actual.Name != cfg.Stream {
 		err = mismatch("name", actual.Name, cfg.Stream)
-	}
-	covered := false
-	for _, pattern := range actual.Subjects {
-		if matchesSubject(pattern, cfg.Subject) {
-			covered = true
-			break
-		}
-	}
-	if err == nil && !covered {
-		err = mismatch("subject", actual.Subjects, cfg.Subject)
 	}
 	if err == nil && actual.Retention != jetstream.LimitsPolicy {
 		err = mismatch("retention", actual.Retention, jetstream.LimitsPolicy)

@@ -101,7 +101,6 @@ func TestTopologyRealServer(t *testing.T) {
 	}
 	missing := natsjs.RetainedStreamConfig{
 		Stream:          "MISSING",
-		Subject:         "missing.event",
 		MaxMessageBytes: 1024,
 	}
 	if err := natsjs.RequireRetainedStream(ctx, js, missing); !errors.Is(err, jetstream.ErrStreamNotFound) {
@@ -137,7 +136,6 @@ func TestLimitsAndRetainedProfiles(t *testing.T) {
 	}
 	external := natsjs.RetainedStreamConfig{
 		Stream:          "EXTERNAL_TEST",
-		Subject:         "external.event.created",
 		MaxMessageBytes: 1024,
 	}
 	_, err = js.CreateStream(
@@ -155,10 +153,6 @@ func TestLimitsAndRetainedProfiles(t *testing.T) {
 	}
 	if err := natsjs.RequireRetainedStream(ctx, js, external); err != nil {
 		t.Fatal(err)
-	}
-	external.Subject = "other.event"
-	if err := natsjs.RequireRetainedStream(ctx, js, external); err == nil || !strings.Contains(err.Error(), "subject") {
-		t.Fatalf("expected uncovered subject: %v", err)
 	}
 }
 
