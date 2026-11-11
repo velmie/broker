@@ -11,8 +11,8 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
-	"github.com/velmie/broker/natsjs/v3/examples/orders"
+	"github.com/velmie/broker/natsjs/v4"
+	"github.com/velmie/broker/natsjs/v4/examples/orders"
 )
 
 func TestTypedReplyIsStoredBeforeRequestAcknowledgment(t *testing.T) {

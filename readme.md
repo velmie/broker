@@ -126,7 +126,7 @@ retain the operation and cause text. See [error handling](docs/error-handling.md
 | Module | Use it for |
 | --- | --- |
 | `github.com/velmie/broker` | Typed handlers, publishers, replies, middleware and coordinated shutdown |
-| [`natsjs/v3`](natsjs/README.md) | NATS JetStream publication and durable pull consumers |
+| [`natsjs/v4`](natsjs/README.md) | NATS JetStream publication and durable pull consumers |
 | [`sqs`](sqs/README.md) | Amazon SQS publication and consumption |
 | [`sns`](sns/README.md) | Amazon SNS publication and notification decoding |
 | [`azuresb`](azuresb/readme.md) | Azure Service Bus queues and subscriptions |

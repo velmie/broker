@@ -7,7 +7,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func publishOne(t *testing.T, nc *nats.Conn, config *natsjs.ConsumerConfig) {

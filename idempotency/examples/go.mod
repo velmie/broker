@@ -6,7 +6,7 @@ require (
 	github.com/nats-io/nats.go v1.54.0
 	github.com/velmie/broker v1.1.0
 	github.com/velmie/broker/idempotency v1.0.0
-	github.com/velmie/broker/natsjs/v3 v3.2.0
+	github.com/velmie/broker/natsjs/v4 v4.0.0
 	github.com/velmie/idempo v0.2.0
 )
 

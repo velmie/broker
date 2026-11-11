@@ -8,7 +8,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
 
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 const operationTimeout = 2 * time.Second

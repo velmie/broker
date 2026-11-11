@@ -13,7 +13,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func TestErrorFieldsPreserveNativeCodesAndOriginalCauses(t *testing.T) {

@@ -3,7 +3,6 @@ package natsjs_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,7 +11,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 type racingStreamCreates struct {
@@ -75,14 +74,6 @@ func TestConcurrentDifferentTopologyCreatesUseFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(conn.Close)
-	var major, minor int
-	if _, err = fmt.Sscanf(conn.ConnectedServerVersion(), "%d.%d", &major, &minor); err != nil {
-		t.Fatalf("parse NATS server version %q: %v", conn.ConnectedServerVersion(), err)
-	}
-	if major < 2 || major == 2 && minor < 10 {
-		t.Skip("concurrent first creation with differing configurations requires NATS 2.10 or newer: " +
-			"NATS 2.9 treats create as create-or-update, so the last concurrent creator's settings may win")
-	}
 	js, err := jetstream.New(conn)
 	if err != nil {
 		t.Fatal(err)

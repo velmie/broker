@@ -7,7 +7,7 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 type capturingConsumerCreation struct {

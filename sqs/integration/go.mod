@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.0
 	github.com/nats-io/nats.go v1.54.0
 	github.com/velmie/broker v1.2.0
-	github.com/velmie/broker/natsjs/v3 v3.3.0
+	github.com/velmie/broker/natsjs/v4 v4.0.0
 	github.com/velmie/broker/sqs v1.1.0
 )
 

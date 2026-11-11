@@ -44,7 +44,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func ListenInstance(ctx context.Context, conn *nats.Conn,
@@ -100,7 +100,7 @@ import (
 	"errors"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func SkipSubject(subject string) broker.HandlerMiddleware {

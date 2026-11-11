@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 //nolint:gocyclo // The integration test owns one secure server lifecycle.

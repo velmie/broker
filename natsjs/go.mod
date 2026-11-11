@@ -1,4 +1,4 @@
-module github.com/velmie/broker/natsjs/v3
+module github.com/velmie/broker/natsjs/v4
 
 go 1.26.0
 

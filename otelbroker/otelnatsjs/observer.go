@@ -12,7 +12,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 
 	"github.com/velmie/broker"
-	native "github.com/velmie/broker/natsjs/v3"
+	native "github.com/velmie/broker/natsjs/v4"
 	"github.com/velmie/broker/otelbroker"
 )
 

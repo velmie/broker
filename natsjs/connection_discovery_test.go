@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func TestConnectionDoesNotReconnectToAdvertisedServers(t *testing.T) {
@@ -34,7 +34,7 @@ func TestConnectionDoesNotReconnectToAdvertisedServers(t *testing.T) {
 		connections <- conn
 		_, _ = fmt.Fprintf(
 			conn,
-			"INFO {\"server_id\":\"test\",\"version\":\"2.9.0\",\"proto\":1,\"max_payload\":1048576,\"connect_urls\":[%q]}\r\n",
+			"INFO {\"server_id\":\"test\",\"version\":\"2.10.0\",\"proto\":1,\"max_payload\":1048576,\"connect_urls\":[%q]}\r\n",
 			advertised.Addr().String(),
 		)
 		scanner := bufio.NewScanner(conn)

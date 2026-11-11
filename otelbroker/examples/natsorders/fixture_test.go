@@ -12,7 +12,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 const testTimeout = 5 * time.Second

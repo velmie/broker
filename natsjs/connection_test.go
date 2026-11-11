@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func TestConnectionConfigValidation(t *testing.T) {

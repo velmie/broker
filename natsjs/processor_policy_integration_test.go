@@ -10,7 +10,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func TestProcessorUsesNativeAckNoneAndOrderedConsumers(t *testing.T) {
@@ -94,11 +94,6 @@ func TestProcessorNativeMultipleFilters(t *testing.T) {
 	remote, err := js.AddConsumer(config.Stream, &nats.ConsumerConfig{
 		Durable: "filtered", AckPolicy: nats.AckExplicitPolicy, FilterSubjects: filters,
 	})
-	if errors.Is(err, nats.ErrConsumerMultipleFilterSubjectsNotSupported) {
-		assertUnsupportedFilters(t, js, config.Stream)
-		t.Log("native SDK explicitly rejected unsupported multiple filters; no subscription started")
-		return
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,17 +175,6 @@ func processNoAckPair(t *testing.T, js nats.JetStreamContext, sub *nats.Subscrip
 		if (body == `{"Fail":true}` && !errors.Is(processErr, failure)) || (body == `{"Fail":false}` && processErr != nil) {
 			t.Fatalf("processing cause: %v", processErr)
 		}
-	}
-}
-
-func assertUnsupportedFilters(t *testing.T, js nats.JetStreamContext, stream string) {
-	t.Helper()
-	info, readErr := js.ConsumerInfo(stream, "filtered")
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if len(info.Config.FilterSubjects) != 0 {
-		t.Fatalf("unsupported response disagrees with readback: %+v", info.Config)
 	}
 }
 

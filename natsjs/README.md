@@ -1,6 +1,6 @@
 # NATS JetStream adapter
 
-`github.com/velmie/broker/natsjs/v3` connects Broker publishers and handlers to
+`github.com/velmie/broker/natsjs/v4` connects Broker publishers and handlers to
 NATS JetStream. It publishes to a bound subject and consumes existing named
 pull or push consumers with explicit acknowledgments. Dependencies are listed in
 [go.mod](go.mod).
@@ -20,7 +20,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func Orders(conn *nats.Conn, stream, consumer, subject string) broker.ConsumerFactory {
@@ -193,9 +193,7 @@ missing resources and verify existing ones without modifying them.
 honor its timeout and the supplied context. Work-queue `MaxMessages` and
 `MaxBytes`, and durable `MaxAckPending`, apply when creating a resource. They do
 not limit operator adjustments to existing compatible resources.
-The create-only guarantee for concurrent first creation with differing
-configurations requires NATS 2.10 or newer. NATS 2.9 treats consumer creation as
-create-or-update, so the last concurrent creator's settings may win.
+NATS server 2.10.0 or newer is required.
 
 `DurableConsumerConfig.StartTime` sets the earliest message time only when a
 durable is created. Its zero value starts from the beginning of the stream.
@@ -213,7 +211,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func EnsureEventsConsumer(ctx context.Context, js jetstream.JetStream, businessWindow time.Duration) error {
@@ -249,7 +247,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func ConnectOrders(ctx context.Context, cfg natsjs.ConnectionConfig, logger *slog.Logger) (*nats.Conn, error) {

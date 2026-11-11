@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func ExampleEnsureLimitsStream() {

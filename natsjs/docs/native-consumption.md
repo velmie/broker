@@ -41,7 +41,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 func Next(ctx context.Context, subscription *nats.Subscription, processor *natsjs.Processor) error {
@@ -107,11 +107,8 @@ A later cumulative ACK can also confirm an earlier failed delivery. Do not
 continue this session after a failed batch or use this pattern with gaps in
 processing. Previously completed business effects are not undone.
 
-Multiple filters require server support. If the SDK returns an unsupported
-configuration error, do not start receiving from a partially created consumer.
-Bind successful native configuration without replacing it with a single filter.
-The [policy tests](../processor_policy_integration_test.go) exercise both outcomes
-against the server versions selected by CI.
+Multiple filters require NATS server 2.10.0 or newer. Bind the native consumer
+without replacing its filter set.
 
 BackOff applies to an unconfirmed delivery's timeout. `NakWithDelay` sets the
 explicit NAK delay independently. The processor neither renews nor settles the

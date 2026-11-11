@@ -6,7 +6,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 )
 
 // This application's recovery policy permits only startup timeouts. Every

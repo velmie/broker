@@ -25,8 +25,6 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/velmie/broker v1.3.0-rc.4 h1:N5QH9S7yBrLs0zyiCIEOWaJU19gOm+RJnkIw66pZpO4=
 github.com/velmie/broker v1.3.0-rc.4/go.mod h1:ntjx4+ujXzohdaWZ3j1e+Ep9L1wdFaLKCcOtyu+F6UY=
-github.com/velmie/broker/natsjs/v3 v3.4.0-rc.3 h1:tY0XYMQSK+31OPxtY5V/+ztWsmbw/oyCSYZqHa67oe8=
-github.com/velmie/broker/natsjs/v3 v3.4.0-rc.3/go.mod h1:VAR8RUtbBKe9Z6sT4V5vLrjEcMB0wOTu1t2+vJ1+VBY=
 github.com/velmie/broker/otelbroker v1.1.0-rc.3 h1:evwX4+R8CDQNxi269Dej2/pufExTJ1x+w2xdhylR++s=
 github.com/velmie/broker/otelbroker v1.1.0-rc.3/go.mod h1:VE+QNN8p7IcLEfVe7cfswYmveKKIPuzjAsF2jckF8sc=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=

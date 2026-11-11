@@ -19,8 +19,8 @@ import (
 	"github.com/nats-io/nuid"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
-	"github.com/velmie/broker/natsjs/v3/examples/orders"
+	"github.com/velmie/broker/natsjs/v4"
+	"github.com/velmie/broker/natsjs/v4/examples/orders"
 )
 
 const consumerName = "worker"

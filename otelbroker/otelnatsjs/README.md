@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/velmie/broker"
-	"github.com/velmie/broker/natsjs/v3"
+	"github.com/velmie/broker/natsjs/v4"
 	"github.com/velmie/broker/otelbroker"
 	"github.com/velmie/broker/otelbroker/otelnatsjs"
 )

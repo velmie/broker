@@ -16,7 +16,7 @@ go work init . ./natsjs ./sqs ./sns ./azuresb ./idempotency ./otelbroker \
 go work edit \
   -replace=github.com/velmie/broker@v1.1.0=. \
   -replace=github.com/velmie/broker@v1.2.0=. \
-  -replace=github.com/velmie/broker/natsjs/v3@v3.2.0=./natsjs \
+  -replace=github.com/velmie/broker/natsjs/v4@v4.0.0=./natsjs \
   -replace=github.com/velmie/broker/sqs@v1.1.0=./sqs \
   -replace=github.com/velmie/broker/sns@v1.1.0=./sns \
   -replace=github.com/velmie/broker/azuresb@v1.1.0=./azuresb \
