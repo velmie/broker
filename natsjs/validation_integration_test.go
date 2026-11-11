@@ -140,7 +140,7 @@ func TestStartupOnlyBindsExistingCompatibleConsumer(t *testing.T) {
 			case "ack_none":
 				remote.Config.AckPolicy = nats.AckNonePolicy
 			case "wrong_filter":
-				config.Subject += ".different"
+				config.Subjects[0] += ".different"
 			case "backoff":
 				remote.Config.BackOff = []time.Duration{time.Second}
 				remote.Config.MaxDeliver = 3

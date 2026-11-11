@@ -225,7 +225,7 @@ func TestTerminalTimeoutIsUnknownWithoutReplayOrOppositeAction(t *testing.T) {
 					return nil
 				})
 			} else {
-				sub, err := js.PullSubscribe(config.Subject, config.Consumer, nats.Bind(config.Stream, config.Consumer))
+				sub, err := js.PullSubscribe(config.Subjects[0], config.Consumer, nats.Bind(config.Stream, config.Consumer))
 				if err != nil {
 					t.Fatal(err)
 				}

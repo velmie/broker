@@ -113,7 +113,7 @@ func TestCoordinatorWithNATSAndSQS(t *testing.T) {
 		return natsjs.NewConsumer(nc, natsjs.ConsumerConfig{
 			Stream:           "ORDERS",
 			Consumer:         "worker",
-			Subject:          "orders",
+			Subjects:         []string{"orders"},
 			FetchTimeout:     100 * time.Millisecond,
 			OperationTimeout: time.Second,
 		})

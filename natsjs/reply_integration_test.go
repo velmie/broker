@@ -56,7 +56,9 @@ func TestTypedReplyIsStoredBeforeRequestAcknowledgment(t *testing.T) {
 	if err := coordinator.Add("create-order", func() (broker.Consumer, error) { return natsjs.NewConsumer(nc, config) }, h); err != nil {
 		t.Fatal(err)
 	}
-	commands, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+	commands, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject: config.Subjects[0],
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +117,7 @@ func TestFailedReplyPreservesCauseAndLeavesRequestPending(t *testing.T) {
 		effects++
 		return nil
 	}, replies)
-	_, err = js.PublishMsg(&nats.Msg{Subject: config.Subject, Header: nats.Header{nats.MsgIdHdr: []string{"command-1"}},
+	_, err = js.PublishMsg(&nats.Msg{Subject: config.Subjects[0], Header: nats.Header{nats.MsgIdHdr: []string{"command-1"}},
 		Data: []byte(`{"order_id":"order-1","product_code":"book-1","count":2}`)})
 	if err != nil {
 		t.Fatal(err)

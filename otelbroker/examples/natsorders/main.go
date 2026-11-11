@@ -79,7 +79,12 @@ func run(ctx context.Context, url string, provider *sdktrace.TracerProvider) (re
 		return err
 	}
 	config := natsjs.ConsumerConfig{
-		Stream: stream, Consumer: consumerName, Subject: subject, Shutdown: broker.ShutdownPolicy{GracePeriod: time.Second},
+		Stream:   stream,
+		Consumer: consumerName,
+		Subjects: []string{subject},
+		Shutdown: broker.ShutdownPolicy{
+			GracePeriod: time.Second,
+		},
 	}
 	config.Observer = newObserver(tracer)
 	record := config.Observer.Record

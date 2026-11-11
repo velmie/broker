@@ -26,7 +26,9 @@ func TestPublicationAndDeliveryPreserveRepresentableHeaders(t *testing.T) {
 		{Name: "Binary", Value: []byte{0xff, 0x00, 'a'}}, {Name: nats.MsgIdHdr, Value: []byte(input.ID)},
 		{Name: "X-Mixed", Value: []byte("first")}, {Name: "X-Mixed", Value: []byte("second")}, {Name: "x-mixed", Value: []byte("case alias")},
 	}}
-	pub, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+	pub, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject: config.Subjects[0],
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +60,7 @@ func TestPublicationAndDeliveryPreserveRepresentableHeaders(t *testing.T) {
 	if !reflect.DeepEqual(retained, want) {
 		t.Fatalf("received %#v, want %#v", retained, want)
 	}
-	if _, err = js.Publish(config.Subject, []byte("later")); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte("later")); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(retained, want) {
@@ -68,7 +70,9 @@ func TestPublicationAndDeliveryPreserveRepresentableHeaders(t *testing.T) {
 
 func TestPublisherRejectsLossyHeadersAndPreservesCause(t *testing.T) {
 	nc, js, config := provision(t, time.Second)
-	pub, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+	pub, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject: config.Subjects[0],
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +106,7 @@ func TestAmbiguousIdentityAndCorrelationNeverReachBusiness(t *testing.T) {
 	for _, key := range []string{nats.MsgIdHdr, "Correlation-Id"} {
 		t.Run(key, func(t *testing.T) {
 			nc, js, config := provision(t, time.Second)
-			input := &nats.Msg{Subject: config.Subject, Data: []byte(`{}`), Header: nats.Header{key: []string{"one", "two"}}}
+			input := &nats.Msg{Subject: config.Subjects[0], Data: []byte(`{}`), Header: nats.Header{key: []string{"one", "two"}}}
 			if _, err := js.PublishMsg(input); err != nil {
 				t.Fatal(err)
 			}

@@ -25,7 +25,7 @@ func TestProcessorUsesNativeAckNoneAndOrderedConsumers(t *testing.T) {
 			if ordered {
 				options = []nats.SubOpt{nats.BindStream(config.Stream), nats.OrderedConsumer()}
 			}
-			sub, err := js.SubscribeSync(config.Subject, options...)
+			sub, err := js.SubscribeSync(config.Subjects[0], options...)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -58,8 +58,8 @@ func TestProcessorUsesNativeAckNoneAndOrderedConsumers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			processNoAckPair(t, js, sub, processor, config.Subject, failure)
-			if subjects[0] != config.Subject || subjects[1] != config.Subject || metadata[0].Sequence.Stream != 1 ||
+			processNoAckPair(t, js, sub, processor, config.Subjects[0], failure)
+			if subjects[0] != config.Subjects[0] || subjects[1] != config.Subjects[0] || metadata[0].Sequence.Stream != 1 ||
 				metadata[1].Sequence.Stream != 2 {
 				t.Fatalf("detached metadata: %v %+v", subjects, metadata)
 			}
@@ -183,7 +183,7 @@ func checkNativeRedelivery(t *testing.T, delayedNak bool) {
 	nc, js, config := provision(t, time.Second)
 	const backoff = 2 * time.Second
 	remote, err := js.AddConsumer(config.Stream, &nats.ConsumerConfig{
-		Durable: "backoff", FilterSubject: config.Subject, AckPolicy: nats.AckExplicitPolicy, MaxDeliver: 3,
+		Durable: "backoff", FilterSubject: config.Subjects[0], AckPolicy: nats.AckExplicitPolicy, MaxDeliver: 3,
 		BackOff: []time.Duration{backoff, backoff},
 	})
 	if err != nil {
@@ -192,7 +192,7 @@ func checkNativeRedelivery(t *testing.T, delayedNak bool) {
 	if !reflect.DeepEqual(remote.Config.BackOff, []time.Duration{backoff, backoff}) {
 		t.Fatalf("backoff=%v", remote.Config.BackOff)
 	}
-	sub, err := js.PullSubscribe(config.Subject, "", nats.Bind(config.Stream, remote.Name))
+	sub, err := js.PullSubscribe(config.Subjects[0], "", nats.Bind(config.Stream, remote.Name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func checkNativeRedelivery(t *testing.T, delayedNak bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	messages, err := sub.Fetch(1, nats.MaxWait(testTimeout))

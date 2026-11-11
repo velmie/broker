@@ -156,7 +156,7 @@ func TestIdleAndPrefetchedShutdownDoNotAdmitCallbacks(t *testing.T) {
 			}
 			if mode == "prefetched" {
 				for range config.BatchSize {
-					if _, err := js.Publish(config.Subject, []byte(`{}`)); err != nil {
+					if _, err := js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -209,7 +209,7 @@ func TestIdlePollTimeoutContinuesUntilMessageArrives(t *testing.T) {
 	go func() { result <- c.Run(ctx, h) }()
 	receive(t, idle)
 	receive(t, idle)
-	if _, err = js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err = receive(t, result); !errors.Is(err, context.Canceled) || called != 1 {
@@ -246,7 +246,11 @@ func TestCoordinatorAppliesEachConsumersShutdownPolicy(t *testing.T) {
 	cancelConfig := graceful
 	cancelConfig.Consumer = "cancel-worker"
 	cancelConfig.Shutdown.Mode = broker.ShutdownCancel
-	remote := &nats.ConsumerConfig{Durable: cancelConfig.Consumer, FilterSubject: graceful.Subject, AckPolicy: nats.AckExplicitPolicy}
+	remote := &nats.ConsumerConfig{
+		Durable:       cancelConfig.Consumer,
+		FilterSubject: graceful.Subjects[0],
+		AckPolicy:     nats.AckExplicitPolicy,
+	}
 	if _, err := js.AddConsumer(graceful.Stream, remote); err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +280,7 @@ func TestCoordinatorAppliesEachConsumersShutdownPolicy(t *testing.T) {
 	if err := coordinator.Add("cancel", cancelFactory, cancelHandler); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := js.Publish(graceful.Subject, []byte(`{}`)); err != nil {
+	if _, err := js.Publish(graceful.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	result := make(chan error, 1)
@@ -309,7 +313,7 @@ func startConsumer(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = js.Publish(config.Subject, []byte(body)); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte(body)); err != nil {
 		t.Fatal(err)
 	}
 	result := make(chan error, 1)

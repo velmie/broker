@@ -17,7 +17,7 @@ import (
 func TestRecoveryStartupUsesFreshConsumer(t *testing.T) {
 	nc, js, config := provision(t, testTimeout)
 	config.OperationTimeout = 200 * time.Millisecond
-	if _, err := js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	ctx, stop := context.WithTimeout(context.Background(), testTimeout)
@@ -87,7 +87,7 @@ func retryableStartup(err error) bool {
 func TestRecoveryUnknownAcknowledgmentDoesNotRestart(t *testing.T) {
 	nc, js, config := provision(t, testTimeout)
 	config.OperationTimeout = 200 * time.Millisecond
-	if _, err := js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	admitted, send := make(chan struct{}), make(chan struct{})
@@ -172,7 +172,7 @@ func TestRecoveryRetainsCallbackAndCleanupCausesWithoutRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(nc.Close)
-	if _, err = js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	cause := errors.New("application failure")

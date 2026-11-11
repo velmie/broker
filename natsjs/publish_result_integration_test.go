@@ -17,7 +17,9 @@ import (
 
 func TestPublisherNativeAcknowledgment(t *testing.T) {
 	nc, js, config := provision(t, time.Second)
-	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject: config.Subjects[0],
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +42,7 @@ func TestPublisherNativeAcknowledgment(t *testing.T) {
 	var api *nats.APIError
 	var operation *natsjs.OperationError
 	if rejected != nil || !errors.As(err, &api) || !errors.As(err, &operation) ||
-		operation.Operation != "publish" || operation.Source != config.Subject {
+		operation.Operation != "publish" || operation.Source != config.Subjects[0] {
 		t.Fatalf("native rejection ack=%+v err=%v", rejected, err)
 	}
 	info, err := js.StreamInfo(config.Stream)
@@ -51,7 +53,9 @@ func TestPublisherNativeAcknowledgment(t *testing.T) {
 
 func TestPublisherConcurrentAcknowledgmentsStayPerCall(t *testing.T) {
 	nc, js, config := provision(t, time.Second)
-	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject: config.Subjects[0],
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +93,7 @@ func TestPublisherConcurrentAcknowledgmentsStayPerCall(t *testing.T) {
 func TestEncodeMessageNativeOptionsAndDetachedOwnership(t *testing.T) {
 	_, js, config := provision(t, time.Second)
 	input := broker.Message{ID: "original", Body: []byte("body"), Headers: []broker.Header{{Name: "X-Tag", Value: []byte("value")}}}
-	message, err := natsjs.EncodeMessage(config.Subject, input)
+	message, err := natsjs.EncodeMessage(config.Subjects[0], input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +120,7 @@ func TestEncodeMessageNativeOptionsAndDetachedOwnership(t *testing.T) {
 		t.Fatal("caller body aliases native storage")
 	}
 	for _, option := range []nats.PubOpt{nats.ExpectStream("wrong-stream"), nats.ExpectLastSequence(99)} {
-		native, encodeErr := natsjs.EncodeMessage(config.Subject, broker.Message{Body: []byte("rejected")})
+		native, encodeErr := natsjs.EncodeMessage(config.Subjects[0], broker.Message{Body: []byte("rejected")})
 		if encodeErr != nil {
 			t.Fatal(encodeErr)
 		}
@@ -126,7 +130,7 @@ func TestEncodeMessageNativeOptionsAndDetachedOwnership(t *testing.T) {
 			t.Fatalf("native option rejection cause: %v", publishErr)
 		}
 	}
-	conflict, err := natsjs.EncodeMessage(config.Subject, broker.Message{Body: []byte("conflict")})
+	conflict, err := natsjs.EncodeMessage(config.Subjects[0], broker.Message{Body: []byte("conflict")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +153,10 @@ func TestPublisherTimeoutCanFollowSuccessfulStorage(t *testing.T) {
 	if _, err = js.UpdateStream(&info.Config); err != nil {
 		t.Fatal(err)
 	}
-	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject, OperationTimeout: 100 * time.Millisecond})
+	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject:          config.Subjects[0],
+		OperationTimeout: 100 * time.Millisecond,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

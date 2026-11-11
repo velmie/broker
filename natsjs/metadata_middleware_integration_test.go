@@ -30,7 +30,9 @@ func TestInstancePolicySkipsOwnMessageAndCompletesBothDeliveries(t *testing.T) {
 		}
 		return broker.Handled{}, nil
 	}).WithMiddleware(broker.SkipOwnMessages("worker-1"))
-	pub, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+	pub, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject: config.Subjects[0],
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

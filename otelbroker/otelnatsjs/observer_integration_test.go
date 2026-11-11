@@ -82,7 +82,7 @@ func TestObserverRealConsumerSettlementOutcomes(t *testing.T) {
 	consumer, err := natsjs.NewConsumer(conn, natsjs.ConsumerConfig{
 		Stream:   name,
 		Consumer: "worker",
-		Subject:  "observed.orders",
+		Subjects: []string{"observed.orders"},
 		Observer: observer,
 	})
 	if err != nil {

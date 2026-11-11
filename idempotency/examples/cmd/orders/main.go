@@ -117,7 +117,7 @@ func demonstrateRedelivery(ctx context.Context, nc *nats.Conn, js nats.JetStream
 		stopFirst() // The effect succeeded. Force shutdown before the adapter can ACK.
 		return nil
 	}).WithMiddleware(broker.LogProcessing(logger, broker.ProcessingLogConfig{}), broker.RecoverPanics(), middleware)
-	if publishErr := publish(ctx, nc, config.Subject); publishErr != nil {
+	if publishErr := publish(ctx, nc, config.Subjects[0]); publishErr != nil {
 		return publishErr
 	}
 	if firstErr := firstRun(firstCtx, nc, config, handler); firstErr != nil {
@@ -245,8 +245,16 @@ func onlyCancellation(err error) bool {
 
 func provision(ctx context.Context, js nats.JetStreamContext) (natsjs.ConsumerConfig, func() error, error) {
 	name := fmt.Sprintf("BROKER_IDEMPO_%d", time.Now().UnixNano())
-	config := natsjs.ConsumerConfig{Stream: name, Consumer: workerName, Subject: name + ".orders",
-		FetchTimeout: 100 * time.Millisecond, OperationTimeout: operationBudget, Shutdown: broker.ShutdownPolicy{GracePeriod: time.Second}}
+	config := natsjs.ConsumerConfig{
+		Stream:           name,
+		Consumer:         workerName,
+		Subjects:         []string{name + ".orders"},
+		FetchTimeout:     100 * time.Millisecond,
+		OperationTimeout: operationBudget,
+		Shutdown: broker.ShutdownPolicy{
+			GracePeriod: time.Second,
+		},
+	}
 	created := false
 	cleanup := func() error {
 		if !created {
@@ -256,13 +264,21 @@ func provision(ctx context.Context, js nats.JetStreamContext) (natsjs.ConsumerCo
 		defer cancel()
 		return failure("delete_stream", "", js.DeleteStream(name, nats.Context(clean)))
 	}
-	_, err := js.AddStream(&nats.StreamConfig{Name: name, Subjects: []string{config.Subject}, Storage: nats.MemoryStorage}, nats.Context(ctx))
+	_, err := js.AddStream(&nats.StreamConfig{
+		Name:     name,
+		Subjects: []string{config.Subjects[0]},
+		Storage:  nats.MemoryStorage,
+	}, nats.Context(ctx))
 	if err != nil {
 		return config, cleanup, failure("create_stream", "", err)
 	}
 	created = true
-	_, err = js.AddConsumer(name, &nats.ConsumerConfig{Durable: workerName, FilterSubject: config.Subject,
-		AckPolicy: nats.AckExplicitPolicy, AckWait: ackWait}, nats.Context(ctx))
+	_, err = js.AddConsumer(name, &nats.ConsumerConfig{
+		Durable:       workerName,
+		FilterSubject: config.Subjects[0],
+		AckPolicy:     nats.AckExplicitPolicy,
+		AckWait:       ackWait,
+	}, nats.Context(ctx))
 	return config, cleanup, failure("create_consumer", "", err)
 }
 func verifyEmpty(ctx context.Context, js nats.JetStreamContext, config *natsjs.ConsumerConfig) error {

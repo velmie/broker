@@ -14,7 +14,7 @@ import (
 
 func TestProcessorLeavesNativePullSettlementToCaller(t *testing.T) {
 	nc, js, config := provision(t, time.Second)
-	subscription, err := js.PullSubscribe(config.Subject, "", nats.Bind(config.Stream, config.Consumer))
+	subscription, err := js.PullSubscribe(config.Subjects[0], "", nats.Bind(config.Stream, config.Consumer))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestProcessorLeavesNativePullSettlementToCaller(t *testing.T) {
 			t.Error(closeErr)
 		}
 	})
-	if _, err = js.Publish(config.Subject, []byte(`{"ID":"first"}`)); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte(`{"ID":"first"}`)); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
@@ -37,7 +37,7 @@ func TestProcessorLeavesNativePullSettlementToCaller(t *testing.T) {
 		func(_ context.Context, delivery broker.Delivery, value struct{ ID string }) (broker.Disposition, error) {
 			callbacks++
 			if value.ID != "first" || delivery.Source() != config.Stream+"/"+config.Consumer ||
-				delivery.(natsjs.SubjectReader).Subject() != config.Subject || !delivery.(broker.AttemptReader).Attempt().Known {
+				delivery.(natsjs.SubjectReader).Subject() != config.Subjects[0] || !delivery.(broker.AttemptReader).Attempt().Known {
 				t.Error("native processing lost typed data or metadata")
 			}
 			return broker.Handled{}, nil
@@ -76,7 +76,7 @@ func TestProcessorRejectsManagedRequirementsBeforeEffects(t *testing.T) {
 
 func TestProcessorRejectsDispositionAndPreservesCancellation(t *testing.T) {
 	_, js, config := provision(t, time.Second)
-	subscription, err := js.PullSubscribe(config.Subject, "", nats.Bind(config.Stream, config.Consumer))
+	subscription, err := js.PullSubscribe(config.Subjects[0], "", nats.Bind(config.Stream, config.Consumer))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestProcessorRejectsDispositionAndPreservesCancellation(t *testing.T) {
 			t.Error(closeErr)
 		}
 	})
-	if _, err = js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)

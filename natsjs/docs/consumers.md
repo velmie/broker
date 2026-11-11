@@ -52,7 +52,9 @@ func ListenInstance(ctx context.Context, conn *nats.Conn,
 ) error {
 	// This binding keeps the provisioned consumer's lifetime and delivery policy.
 	consumer, err := natsjs.NewPullConsumer(conn, natsjs.ConsumerConfig{
-		Stream: stream, Consumer: consumerName, Subject: subject,
+		Stream:   stream,
+		Consumer: consumerName,
+		Subjects: []string{subject},
 	})
 	if err != nil {
 		return err

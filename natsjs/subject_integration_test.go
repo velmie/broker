@@ -87,9 +87,9 @@ func TestWildcardGuardUsesReceivedSubjectBeforeDecoding(t *testing.T) {
 func provisionWildcard(t *testing.T) (*nats.Conn, nats.JetStreamContext, natsjs.ConsumerConfig) {
 	t.Helper()
 	nc, js, config := provision(t, time.Second)
-	config.Subject = config.Stream + ".*.updated"
+	config.Subjects[0] = config.Stream + ".*.updated"
 	if _, err := js.UpdateStream(&nats.StreamConfig{
-		Name: config.Stream, Subjects: []string{config.Subject}, Storage: nats.MemoryStorage,
+		Name: config.Stream, Subjects: []string{config.Subjects[0]}, Storage: nats.MemoryStorage,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func provisionWildcard(t *testing.T) (*nats.Conn, nats.JetStreamContext, natsjs.
 		t.Fatal(err)
 	}
 	if _, err := js.AddConsumer(config.Stream, &nats.ConsumerConfig{
-		Durable: config.Consumer, FilterSubject: config.Subject, AckPolicy: nats.AckExplicitPolicy,
+		Durable: config.Consumer, FilterSubject: config.Subjects[0], AckPolicy: nats.AckExplicitPolicy,
 	}); err != nil {
 		t.Fatal(err)
 	}

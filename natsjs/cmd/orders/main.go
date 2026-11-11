@@ -50,7 +50,7 @@ func run(url, domain, apiPrefix string) (result error) {
 	subject := stream + ".orders"
 	replySubject := stream + ".created"
 	config := natsjs.ConsumerConfig{
-		Stream: stream, Consumer: consumerName, Subject: subject, Domain: domain, APIPrefix: apiPrefix,
+		Stream: stream, Consumer: consumerName, Subjects: []string{subject}, Domain: domain, APIPrefix: apiPrefix,
 		Shutdown: broker.ShutdownPolicy{GracePeriod: time.Second},
 	}
 	// Validate the same immutable selection before creating remote topology.

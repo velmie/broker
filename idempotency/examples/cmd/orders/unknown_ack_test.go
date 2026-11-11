@@ -45,7 +45,7 @@ func TestInjectedUnknownAckRetainsMarkerForRealRedelivery(t *testing.T) {
 		return nil
 	}).WithMiddleware(middleware)
 	config.Observer = injectedAckFailure(connection, &unknown, &opposite)
-	if err = publish(ctx, control, config.Subject); err != nil {
+	if err = publish(ctx, control, config.Subjects[0]); err != nil {
 		t.Fatal(err)
 	}
 	consumer, err := natsjs.NewConsumer(connection, config)

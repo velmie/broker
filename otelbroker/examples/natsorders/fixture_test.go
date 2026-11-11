@@ -74,7 +74,7 @@ func provision(t *testing.T, ackWait time.Duration) (*nats.Conn, natsjs.Consumer
 		t.Fatal(err)
 	}
 	return nc, natsjs.ConsumerConfig{
-		Stream: name, Consumer: "worker", Subject: subject, FetchTimeout: 100 * time.Millisecond, OperationTimeout: time.Second,
+		Stream: name, Consumer: "worker", Subjects: []string{subject}, FetchTimeout: 100 * time.Millisecond, OperationTimeout: time.Second,
 	}
 }
 

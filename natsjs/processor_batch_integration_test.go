@@ -65,7 +65,7 @@ func TestProcessorBatchMakesCumulativeConfirmationConditionalOnEveryEffect(t *te
 func cumulativeBatch(t *testing.T, ctx context.Context) (*nats.Subscription, []*nats.Msg, string) {
 	t.Helper()
 	_, js, config := provision(t, time.Second)
-	subscription, err := js.SubscribeSync(config.Subject, nats.BindStream(config.Stream),
+	subscription, err := js.SubscribeSync(config.Subjects[0], nats.BindStream(config.Stream),
 		nats.Durable("cumulative"), nats.AckAll(), nats.AckWait(time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func cumulativeBatch(t *testing.T, ctx context.Context) (*nats.Subscription, []*
 	})
 	var messages []*nats.Msg
 	for _, body := range []string{"1", "2", "3"} {
-		if _, err = js.Publish(config.Subject, []byte(body)); err != nil {
+		if _, err = js.Publish(config.Subjects[0], []byte(body)); err != nil {
 			t.Fatal(err)
 		}
 		message, receiveErr := subscription.NextMsgWithContext(ctx)

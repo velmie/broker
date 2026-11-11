@@ -12,7 +12,9 @@ import (
 
 func publishOne(t *testing.T, nc *nats.Conn, config *natsjs.ConsumerConfig) {
 	t.Helper()
-	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject: config.Subjects[0],
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

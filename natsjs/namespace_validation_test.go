@@ -35,7 +35,13 @@ func TestConsumerNamespaceValidationIsLocal(t *testing.T) {
 		{"invalid utf8 prefix", "", "$JS.\xff.API", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			config := natsjs.ConsumerConfig{Stream: "ORDERS", Consumer: "worker", Subject: "orders", Domain: test.domain, APIPrefix: test.prefix}
+			config := natsjs.ConsumerConfig{
+				Stream:    "ORDERS",
+				Consumer:  "worker",
+				Subjects:  []string{"orders"},
+				Domain:    test.domain,
+				APIPrefix: test.prefix,
+			}
 			consumer, err := natsjs.NewConsumer(connection, config)
 			if test.valid {
 				if err != nil || consumer == nil {

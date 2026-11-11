@@ -61,7 +61,11 @@ func verifyWireContinuity(ctx context.Context, nc *nats.Conn, js nats.JetStreamC
 		AckPolicy: nats.AckExplicitPolicy}, nats.Context(ctx)); err != nil {
 		return operationError(stream+"/"+durable, "create_consumer", err)
 	}
-	config := natsjs.ConsumerConfig{Stream: stream, Consumer: durable, Subject: subject}
+	config := natsjs.ConsumerConfig{
+		Stream:   stream,
+		Consumer: durable,
+		Subjects: []string{subject},
+	}
 	// This is the single-value baseline wire format. It does not execute an old
 	// adapter binary. A native and a managed caller share the same durable here.
 	if _, err = js.PublishMsg(&nats.Msg{Subject: subject, Header: nats.Header{
@@ -174,7 +178,7 @@ func consumeManaged(ctx context.Context, nc *nats.Conn, config natsjs.ConsumerCo
 
 //nolint:gocritic // The command passes its immutable binding as one value.
 func consumeNative(ctx context.Context, js nats.JetStreamContext, config natsjs.ConsumerConfig) (result error) {
-	subscription, err := js.PullSubscribe(config.Subject, config.Consumer, nats.Bind(config.Stream, config.Consumer), nats.ManualAck())
+	subscription, err := js.PullSubscribe(config.Subjects[0], config.Consumer, nats.Bind(config.Stream, config.Consumer), nats.ManualAck())
 	if err != nil {
 		return operationError(config.Stream, "bind_native", err)
 	}

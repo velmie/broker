@@ -46,7 +46,7 @@ func TestRunServiceParentStopAndPrefetch(t *testing.T) {
 				}
 				if mode == "prefetched" {
 					for range config.BatchSize {
-						if _, err := js.Publish(config.Subject, []byte(`{}`)); err != nil {
+						if _, err := js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -319,7 +319,7 @@ func TestRunServiceRealCoordinatedConsumers(t *testing.T) {
 		peer.Stream,
 		&nats.ConsumerConfig{
 			Durable:       peer.Consumer,
-			FilterSubject: peer.Subject,
+			FilterSubject: peer.Subjects[0],
 			AckPolicy:     nats.AckExplicitPolicy,
 		},
 	); err != nil {
@@ -346,7 +346,7 @@ func TestRunServiceRealCoordinatedConsumers(t *testing.T) {
 	if err := coordinator.Add("peer", func() (broker.Consumer, error) { return natsjs.NewConsumer(nc, peer) }, graceful); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	err := coordinator.RunService(context.Background())
@@ -395,7 +395,7 @@ func startServiceConsumer(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	result := make(chan error, 1)
@@ -563,7 +563,7 @@ func TestRunServiceStopDuringPullRecovery(t *testing.T) {
 			MaxWaiting: 1,
 		},
 	)
-	held, err := js.PullSubscribe(config.Subject, config.Consumer, nats.Bind(config.Stream, config.Consumer))
+	held, err := js.PullSubscribe(config.Subjects[0], config.Consumer, nats.Bind(config.Stream, config.Consumer))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -605,7 +605,7 @@ func TestRunServiceRecoveryRealGenerations(t *testing.T) {
 			func(t *testing.T) {
 				nc, js, config := provision(t, time.Second)
 				config.OperationTimeout = 150 * time.Millisecond
-				if _, err := js.Publish(config.Subject, []byte(`{}`)); err != nil {
+				if _, err := js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 					t.Fatal(err)
 				}
 				parent, cancel := context.WithCancel(context.Background())

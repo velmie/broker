@@ -20,7 +20,7 @@ func TestEncodedAsyncFuturesRetainIndividualOutcomes(t *testing.T) {
 	}
 	defer js.CleanupPublisher()
 	original := broker.Message{ID: "success", Body: []byte("body"), Headers: []broker.Header{{Name: "X-Tag", Value: []byte("value")}}}
-	native, err := natsjs.EncodeMessage(config.Subject, original)
+	native, err := natsjs.EncodeMessage(config.Subjects[0], original)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestEncodedAsyncFuturesRetainIndividualOutcomes(t *testing.T) {
 	}
 	original.Body[0] = 'B'
 	original.Headers[0].Value[0] = 'V'
-	rejected, err := natsjs.EncodeMessage(config.Subject, broker.Message{ID: "rejected", Body: []byte("rejected")})
+	rejected, err := natsjs.EncodeMessage(config.Subjects[0], broker.Message{ID: "rejected", Body: []byte("rejected")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestEncodedAsyncTimeoutDoesNotProveAbsenceOfStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer js.CleanupPublisher()
-	message, err := natsjs.EncodeMessage(config.Subject, broker.Message{ID: "stored", Body: []byte("event")})
+	message, err := natsjs.EncodeMessage(config.Subjects[0], broker.Message{ID: "stored", Body: []byte("event")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestEncodedAsyncCleanupIsolatesPublisherContexts(t *testing.T) {
 	if err != nil || ack.Stream != "CONTROLLED" || ack.Sequence != 1 {
 		t.Fatalf("remaining future=%+v err=%v", ack, err)
 	}
-	assertAsyncConnectionUsable(t, second, config.Subject, config.Stream)
+	assertAsyncConnectionUsable(t, second, config.Subjects[0], config.Stream)
 }
 
 func awaitEncodedFuture(t *testing.T, future nats.PubAckFuture) (*nats.PubAck, error) {

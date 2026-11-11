@@ -32,7 +32,9 @@ func TestPullConsumerEphemeralFanoutAndIndependentStop(t *testing.T) {
 	}
 	firstResult := runPull(t, nc, first, firstCtx, handler("replica-one", firstCalls))
 	secondResult := runPull(t, nc, second, secondCtx, handler("replica-two", secondCalls))
-	pub, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+	pub, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject: config.Subjects[0],
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +78,7 @@ func TestPullConsumerEphemeralFanoutAndIndependentStop(t *testing.T) {
 func TestPullConsumerPreservesDurableBacklog(t *testing.T) {
 	nc, js, config := provision(t, time.Second)
 	for _, body := range []string{"first", "second"} {
-		if _, err := js.Publish(config.Subject, []byte(body)); err != nil {
+		if _, err := js.Publish(config.Subjects[0], []byte(body)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -155,7 +157,7 @@ func TestPullConsumerEphemeralGracefulStopJoinsRenewalAndTerminal(t *testing.T) 
 		return nil
 	}, broker.WithKeepAlive(25*time.Millisecond))
 	result := runPull(t, nc, config, ctx, handler)
-	if _, err := js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	work := receive(t, entered)
@@ -195,7 +197,7 @@ func namedEphemeral(t *testing.T, js nats.JetStreamContext, config natsjs.Consum
 	t.Helper()
 	config.Consumer = name
 	if _, err := js.AddConsumer(config.Stream, &nats.ConsumerConfig{
-		Name: name, FilterSubject: config.Subject, AckPolicy: nats.AckExplicitPolicy,
+		Name: name, FilterSubject: config.Subjects[0], AckPolicy: nats.AckExplicitPolicy,
 		DeliverPolicy: nats.DeliverNewPolicy, AckWait: ackWait, InactiveThreshold: time.Minute,
 	}); err != nil {
 		t.Fatal(err)

@@ -38,7 +38,9 @@ func TestConsumerSelectedJetStreamNamespace(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+			publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+				Subject: config.Subjects[0],
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -174,7 +176,12 @@ func namespaceSource(t *testing.T, js nats.JetStreamContext) natsjs.ConsumerConf
 		AckPolicy: nats.AckExplicitPolicy, Description: "namespace binding", MaxAckPending: 3}); err != nil {
 		t.Fatal(err)
 	}
-	return natsjs.ConsumerConfig{Stream: stream, Consumer: "worker", Subject: subject, FetchTimeout: 100 * time.Millisecond}
+	return natsjs.ConsumerConfig{
+		Stream:       stream,
+		Consumer:     "worker",
+		Subjects:     []string{subject},
+		FetchTimeout: 100 * time.Millisecond,
+	}
 }
 
 func namespaceCancellationOnly(err error) bool {

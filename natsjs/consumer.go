@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,12 +29,14 @@ type Consumer struct {
 }
 
 // ConsumerConfig describes the supported explicit-ack profile. Stream, Consumer and
-// Subject are required. Provisioning and changes to the remote configuration
+// Subjects are required. Provisioning and changes to the remote configuration
 // belong to the application and must not race with Run.
 type ConsumerConfig struct {
 	Stream   string
 	Consumer string
-	Subject  string
+	// Subjects is a nonempty set of unique NATS filters. Order is ignored.
+	// Constructors copy the slice.
+	Subjects []string
 	// Domain and APIPrefix select the JetStream management/fetch namespace.
 	// Both empty use the default; at most one may be nonempty. APIPrefix accepts
 	// one optional trailing dot, matching the native SDK.
@@ -67,6 +70,7 @@ func NewConsumer(conn *nats.Conn, config ConsumerConfig) (*Consumer, error) {
 	if config.OperationTimeout == 0 {
 		config.OperationTimeout = defaultOperationTimeout
 	}
+	config.Subjects = slices.Clone(config.Subjects)
 	c := &Consumer{conn: conn, config: config}
 	if err := c.Validate(); err != nil {
 		return nil, err
@@ -310,8 +314,10 @@ func (c *Consumer) validateConfig() error {
 			return fieldFailure(field.name, "invalid_name", fmt.Errorf("%s: invalid name", field.name))
 		}
 	}
-	if !validSubject(c.config.Subject, true) {
-		return fieldFailure("Subject", "invalid_filter", errors.New("consumer Subject: invalid filter"))
+	var failures configErrors
+	validateFilterSubjects(&failures, c.config.Subjects)
+	if err := failures.err(); err != nil {
+		return err
 	}
 	if c.config.BatchSize < 1 {
 		return fieldFailure("BatchSize", "must_be_positive", errors.New("BatchSize: must be positive"))
@@ -398,9 +404,9 @@ func (c *Consumer) subscribe(
 	if validationErr := c.validateConsumer(info); validationErr != nil {
 		return nil, remote, false, validationErr
 	}
-	if remote.FilterSubject != c.config.Subject || len(remote.FilterSubjects) != 0 {
-		return nil, remote, false, fieldFailure("Subject", "filter_mismatch",
-			errors.New("consumer Subject: must equal the consumer's single FilterSubject"),
+	if !equalFilterSubjects(c.config.Subjects, remote.FilterSubject, remote.FilterSubjects) {
+		return nil, remote, false, fieldFailure("Subjects", "filter_mismatch",
+			fmt.Errorf("consumer filters: have %v, want %v", nativeFilterSubjects(remote.FilterSubject, remote.FilterSubjects), c.config.Subjects),
 		)
 	}
 	if len(remote.BackOff) != 0 {
@@ -429,7 +435,7 @@ func (c *Consumer) subscribe(
 	// context and its SDK goroutine. This binding neither creates nor deletes
 	// remote consumer, and every Fetch supplies its own finite context. Passing
 	// a durable name for an ephemeral would change the requested native profile.
-	subscription, err := js.PullSubscribe(c.config.Subject, remote.Durable,
+	subscription, err := js.PullSubscribe(c.subscriptionSubject(), remote.Durable,
 		nats.Bind(c.config.Stream, c.config.Consumer), nats.SkipConsumerLookup(), nats.ManualAck(), nats.AckExplicit())
 	return subscription, remote, false, err
 }
@@ -478,11 +484,18 @@ func (c *Consumer) subscribePush(js nats.JetStreamContext, remote *nats.Consumer
 	var subscription *nats.Subscription
 	var err error
 	if remote.DeliverGroup != "" {
-		subscription, err = js.QueueSubscribeSync(c.config.Subject, remote.DeliverGroup, options...)
+		subscription, err = js.QueueSubscribeSync(c.subscriptionSubject(), remote.DeliverGroup, options...)
 	} else {
-		subscription, err = js.SubscribeSync(c.config.Subject, options...)
+		subscription, err = js.SubscribeSync(c.subscriptionSubject(), options...)
 	}
 	return subscription, *remote, err
+}
+
+func (c *Consumer) subscriptionSubject() string {
+	if len(c.config.Subjects) == 1 {
+		return c.config.Subjects[0]
+	}
+	return ""
 }
 
 func (c *Consumer) receive(ctx context.Context, subscription *nats.Subscription) ([]*nats.Msg, error) {

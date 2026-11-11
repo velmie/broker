@@ -109,7 +109,7 @@ func startPush(ctx context.Context, connection *nats.Conn, stream string, remote
 		return nil
 	})
 	consumer, err := natsjs.NewPushConsumer(connection, natsjs.ConsumerConfig{
-		Stream: stream, Consumer: remote.Durable, Subject: remote.FilterSubject,
+		Stream: stream, Consumer: remote.Durable, Subjects: []string{remote.FilterSubject},
 		Observer: natsjs.Observer{Record: func(_ context.Context, event natsjs.Observation) {
 			if event.Operation == natsjs.OperationAck && event.Outcome == natsjs.OutcomeConfirmed {
 				progress.mu.Lock()

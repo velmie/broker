@@ -48,7 +48,9 @@ func TestErrorFieldsPreserveNativeCodesAndOriginalCauses(t *testing.T) {
 
 func TestPublicationValidationRetainsFieldAndPublishContext(t *testing.T) {
 	nc, _, config := provision(t, time.Second)
-	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{Subject: config.Subject})
+	publisher, err := natsjs.NewPublisher(nc, natsjs.PublisherConfig{
+		Subject: config.Subjects[0],
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +65,7 @@ func TestPublicationValidationRetainsFieldAndPublishContext(t *testing.T) {
 		t.Fatalf("original validation cause: %v", err)
 	}
 	if !errors.As(err, &stage) || stage.Stage != broker.StagePublish ||
-		!errors.As(err, &operation) || operation.Operation != "publish" || operation.Source != config.Subject {
+		!errors.As(err, &operation) || operation.Operation != "publish" || operation.Source != config.Subjects[0] {
 		t.Fatalf("publish context: %v", err)
 	}
 }

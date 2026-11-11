@@ -175,10 +175,10 @@ func TestPullConsumerSurvivesServerRestart(t *testing.T) {
 	js, config := provisionTopology(t, nc, nats.FileStorage, &nats.ConsumerConfig{
 		AckWait: time.Minute,
 	})
-	if _, err := js.Publish(config.Subject, []byte("old")); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte("old")); err != nil {
 		t.Fatal(err)
 	}
-	sub, err := js.PullSubscribe(config.Subject, config.Consumer, nats.Bind(config.Stream, config.Consumer))
+	sub, err := js.PullSubscribe(config.Subjects[0], config.Consumer, nats.Bind(config.Stream, config.Consumer))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestPullConsumerSurvivesServerRestart(t *testing.T) {
 	if err = messages[0].Nak(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = js.Publish(config.Subject, []byte("new")); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte("new")); err != nil {
 		t.Fatal(err)
 	}
 	seen := map[string]bool{receive(t, calls): true, receive(t, calls): true}
@@ -264,7 +264,7 @@ func TestPullConsumerRetriesMaxWaiting(t *testing.T) {
 		AckWait:    time.Second,
 		MaxWaiting: 1,
 	})
-	held, err := js.PullSubscribe(config.Subject, config.Consumer, nats.Bind(config.Stream, config.Consumer))
+	held, err := js.PullSubscribe(config.Subjects[0], config.Consumer, nats.Bind(config.Stream, config.Consumer))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,14 +292,14 @@ func TestPullConsumerRetriesMaxWaiting(t *testing.T) {
 		secondTime.Sub(firstTime) < 250*time.Millisecond {
 		t.Fatalf("interruptions: %v, %v after %v", first.Err, second.Err, secondTime.Sub(firstTime))
 	}
-	if _, err = js.Publish(config.Subject, []byte("held")); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte("held")); err != nil {
 		t.Fatal(err)
 	}
 	msg := receive(t, fetched)
 	if err = msg.AckSync(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = js.Publish(config.Subject, []byte("managed")); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte("managed")); err != nil {
 		t.Fatal(err)
 	}
 	if got := receive(t, calls); got != "managed" {
@@ -494,7 +494,7 @@ func TestPullConsumerCancellationDuringRecovery(t *testing.T) {
 			AckWait:    time.Second,
 			MaxWaiting: 1,
 		})
-		held, err := js.PullSubscribe(config.Subject, config.Consumer, nats.Bind(config.Stream, config.Consumer))
+		held, err := js.PullSubscribe(config.Subjects[0], config.Consumer, nats.Bind(config.Stream, config.Consumer))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -546,7 +546,7 @@ func TestPushConsumerSurvivesServerRestart(t *testing.T) {
 	eventMatching(t, events, natsjs.OperationStartup, natsjs.OutcomeSucceeded)
 	restartServer(t)
 	waitUntil(t, nc.IsConnected)
-	if _, err := js.Publish(config.Subject, []byte("push")); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte("push")); err != nil {
 		t.Fatal(err)
 	}
 	if got := receive(t, calls); got != "push" {

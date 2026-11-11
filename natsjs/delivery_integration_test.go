@@ -90,7 +90,7 @@ func TestTypedOrderEffectPrecedesConfirmedCompletion(t *testing.T) {
 	if err := coordinator.Add("create-order", func() (broker.Consumer, error) { return natsjs.NewConsumer(nc, config) }, h); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := js.Publish(config.Subject, []byte(`{"order_id":"order-1","product_code":"book-1","count":2}`)); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte(`{"order_id":"order-1","product_code":"book-1","count":2}`)); err != nil {
 		t.Fatal(err)
 	}
 	result := make(chan error, 1)
@@ -157,7 +157,7 @@ func TestDynamicRetryAndNativeTermination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	result := make(chan error, 1)
@@ -195,7 +195,7 @@ func TestRejectTerminatesDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err = js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	result := make(chan error, 1)
@@ -256,7 +256,7 @@ func provisionTopology(t *testing.T, nc *nats.Conn, storage nats.StorageType,
 	return js, natsjs.ConsumerConfig{
 		Stream:           name,
 		Consumer:         "worker",
-		Subject:          subject,
+		Subjects:         []string{subject},
 		FetchTimeout:     100 * time.Millisecond,
 		OperationTimeout: time.Second,
 	}

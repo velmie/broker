@@ -37,7 +37,7 @@ func TestPushConsumerProcessesTypedDelivery(t *testing.T) {
 					}
 					return nil
 				}).WithMiddleware(broker.SkipOwnMessages("other-instance"))
-			if _, err := js.Publish(config.Subject, []byte(`{"Quantity":2}`)); err != nil {
+			if _, err := js.Publish(config.Subjects[0], []byte(`{"Quantity":2}`)); err != nil {
 				t.Fatal(err)
 			}
 			consumer, err := natsjs.NewPushConsumer(nc, config)
@@ -88,7 +88,7 @@ func TestPushConsumerQueueSharesProgressAndSurvivesPeerStop(t *testing.T) {
 	receive(t, ready)
 	receive(t, ready)
 	for _, body := range []string{"first", "second"} {
-		if _, err := js.Publish(config.Subject, []byte(body)); err != nil {
+		if _, err := js.Publish(config.Subjects[0], []byte(body)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -103,7 +103,7 @@ func TestPushConsumerQueueSharesProgressAndSurvivesPeerStop(t *testing.T) {
 	if err := receive(t, first); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if _, err := js.Publish(config.Subject, []byte("after-stop")); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte("after-stop")); err != nil {
 		t.Fatal(err)
 	}
 	receive(t, acked)
@@ -143,7 +143,7 @@ func TestPushConsumerGracefulStopJoinsCallbackAndRenewal(t *testing.T) {
 		return nil
 	}, broker.WithKeepAlive(25*time.Millisecond))
 	result := runPush(t, nc, config, ctx, handler)
-	if _, err := js.Publish(config.Subject, []byte(`{}`)); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	work := receive(t, entered)
@@ -185,7 +185,7 @@ func TestPushConsumerFailureLeavesDeliveryUnconfirmed(t *testing.T) {
 	ctx, stop := context.WithTimeout(context.Background(), testTimeout)
 	defer stop()
 	result := runPush(t, nc, config, ctx, handler)
-	if _, err := js.Publish(config.Subject, []byte("event")); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte("event")); err != nil {
 		t.Fatal(err)
 	}
 	if err := receive(t, result); !errors.Is(err, cause) {
@@ -212,7 +212,7 @@ func TestPushConsumerForcedStopJoinsCallbackWithoutAck(t *testing.T) {
 		return broker.Handled{}, nil
 	})
 	result := runPush(t, nc, config, ctx, handler)
-	if _, err := js.Publish(config.Subject, []byte("event")); err != nil {
+	if _, err := js.Publish(config.Subjects[0], []byte("event")); err != nil {
 		t.Fatal(err)
 	}
 	receive(t, entered)
@@ -254,7 +254,7 @@ func TestPushConsumerRejectsPullProfileBeforeCallback(t *testing.T) {
 func TestPushConsumerRejectsExistingNonQueueBinding(t *testing.T) {
 	nc, js, config := provision(t, time.Second)
 	config = provisionPush(t, js, config, "", false, time.Second)
-	owned, err := js.SubscribeSync(config.Subject, nats.Bind(config.Stream, config.Consumer))
+	owned, err := js.SubscribeSync(config.Subjects[0], nats.Bind(config.Stream, config.Consumer))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ func provisionPush(t *testing.T, js nats.JetStreamContext, config natsjs.Consume
 	name := "push"
 	config.Consumer = name
 	remote := &nats.ConsumerConfig{
-		Name: name, FilterSubject: config.Subject, AckPolicy: nats.AckExplicitPolicy, AckWait: ackWait,
+		Name: name, FilterSubject: config.Subjects[0], AckPolicy: nats.AckExplicitPolicy, AckWait: ackWait,
 		DeliverSubject: nats.NewInbox(), DeliverGroup: group, InactiveThreshold: time.Minute,
 	}
 	if !ephemeral {

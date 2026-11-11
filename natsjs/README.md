@@ -26,7 +26,9 @@ import (
 func Orders(conn *nats.Conn, stream, consumer, subject string) broker.ConsumerFactory {
 	return func() (broker.Consumer, error) {
 		return natsjs.NewConsumer(conn, natsjs.ConsumerConfig{
-			Stream: stream, Consumer: consumer, Subject: subject,
+			Stream:   stream,
+			Consumer: consumer,
+			Subjects: []string{subject},
 		})
 	}
 }
@@ -42,15 +44,15 @@ all owned work joins. It does not create, update or delete streams or remote
 consumers. Recognized pull receive interruptions are retried on the same local
 subscription. See [consumer progress and recovery](docs/consumers.md).
 
-The remote consumer must use explicit acknowledgments, exactly one
-`FilterSubject` matching `Subject`, and no native `BackOff`. Keep its configuration
+The remote consumer must use explicit acknowledgments, the same exact set of
+filters as `Subjects`, and no native `BackOff`. Keep its configuration
 stable during a run. See [native processing and ownership](docs/native-consumption.md)
 when the application should own receive and settlement. Ordered and other native
 policies are demonstrated in [native sessions](cmd/native/README.md).
 
 | Configuration | Meaning |
 | --- | --- |
-| `Stream`, `Consumer`, `Subject` | Required binding; diagnostic source is `stream/consumer` |
+| `Stream`, `Consumer`, `Subjects` | Required binding; diagnostic source is `stream/consumer` |
 | `Domain` or `APIPrefix` | Optional JetStream management/fetch namespace; mutually exclusive |
 | `BatchSize` | Maximum pull batch; zero selects one; push requires one |
 | `FetchTimeout` | Receive wait budget; zero selects one second |

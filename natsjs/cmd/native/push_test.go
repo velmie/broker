@@ -55,7 +55,7 @@ func TestNativePushDrainJoinsHeldCallback(t *testing.T) {
 	consumer, err := natsjs.NewPushConsumer(connection, natsjs.ConsumerConfig{
 		Stream:   stream,
 		Consumer: "held",
-		Subject:  subject,
+		Subjects: []string{subject},
 		Observer: natsjs.Observer{
 			Record: func(_ context.Context, event natsjs.Observation) {
 				if event.Operation == natsjs.OperationStop && event.Outcome == natsjs.OutcomeStarted {
@@ -136,7 +136,11 @@ func TestNativePushApplicationFailureRetainsCauseAndDetachedData(t *testing.T) {
 	marker := errors.New("application order field rejected")
 	failures := make(chan error, 1)
 	var retained broker.Delivery
-	consumer, err := natsjs.NewPushConsumer(connection, natsjs.ConsumerConfig{Stream: stream, Consumer: "rejected", Subject: subject})
+	consumer, err := natsjs.NewPushConsumer(connection, natsjs.ConsumerConfig{
+		Stream:   stream,
+		Consumer: "rejected",
+		Subjects: []string{subject},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
