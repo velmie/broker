@@ -25,8 +25,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/velmie/broker v1.3.0-rc.5 h1:R7GQdOQOR66D15fCbDwL06cjjp7UupvkoNq2ruejA0I=
 github.com/velmie/broker v1.3.0-rc.5/go.mod h1:ntjx4+ujXzohdaWZ3j1e+Ep9L1wdFaLKCcOtyu+F6UY=
-github.com/velmie/broker/natsjs/v4 v4.0.0-rc.1 h1:OASZz5aDBNgNz4jvu5bohbLENcWbrWnHBy4W9K5BLVM=
-github.com/velmie/broker/natsjs/v4 v4.0.0-rc.1/go.mod h1:TYpFXmcnwSYz3vPKVYMxA7X/EhHlF+L0zAFWqujdyV8=
+github.com/velmie/broker/natsjs/v4 v4.0.0-rc.2 h1:ra2xNPU9nQSOMueuvFj9sCJBX+EGrNF1VAotta/umQA=
+github.com/velmie/broker/natsjs/v4 v4.0.0-rc.2/go.mod h1:TYpFXmcnwSYz3vPKVYMxA7X/EhHlF+L0zAFWqujdyV8=
 github.com/velmie/broker/otelbroker v1.1.0-rc.4 h1:4sBMDnzbveH37gXH8Ayc9RZppRkyXYBUv/NVyiuAc/I=
 github.com/velmie/broker/otelbroker v1.1.0-rc.4/go.mod h1:ZZuuhuHX7SHdgtej0hloamFiL5nzWzCqaRDDaUAAdz4=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
