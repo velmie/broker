@@ -44,9 +44,11 @@ func TracePublishing(system, destination string, values ...Option) broker.Publis
 // TraceProcessing creates a consumer process span, preserving requirements and
 // callback results. A valid ambient span stays the parent; extracted message
 // context becomes a link. Without an ambient span, the message context is parent.
-// Retry is recorded as intent, never as confirmed settlement. Place RecoverPanics
-// inside this middleware to observe a recovered error. Unrecovered panics propagate
-// without their values being recorded automatically by the SDK.
+// Retry and rejection outcomes record intent, not confirmed settlement. A non-nil
+// cause on either marks the span as an error, as does any callback error, including
+// cooperative cancellation. LogProcessing omits cooperative cancellation.
+// Place RecoverPanics inside this middleware to observe a recovered error.
+// Unrecovered panics propagate without their values being recorded automatically.
 func TraceProcessing(system string, values ...Option) broker.HandlerMiddleware {
 	o := configure(values)
 	return broker.HandlerMiddleware{Wrap: func(next broker.HandlerFunc) broker.HandlerFunc {

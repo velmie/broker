@@ -30,7 +30,7 @@ func NewObserver(meter metric.Meter, logger *slog.Logger, cfg ObserverConfig) (n
 	}
 	return native.Observer{
 		Begin: func(ctx context.Context, _ native.DeliveryInfo) context.Context {
-			return otelbroker.WithProcessingContext(ctx)
+			return otelbroker.CaptureProcessing(ctx)
 		},
 		Record: func(ctx context.Context, event native.Observation) {
 			ctx = otelbroker.ProcessingContext(ctx)

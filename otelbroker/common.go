@@ -18,7 +18,7 @@ const (
 	// ScopeName identifies this instrumentation.
 	ScopeName = "github.com/velmie/broker/otelbroker"
 	// Version is the instrumentation version.
-	Version = "1.0.0"
+	Version = "1.1.0"
 )
 
 // Option configures tracing. Supplied callbacks and interfaces must be non-nil,
@@ -50,7 +50,8 @@ func WithProcessingAttributes(f func(context.Context, broker.Delivery) []attribu
 	return func(o *options) { o.processingAttributes = f }
 }
 
-// WithErrorRecorder receives the original error, including requested retry causes.
+// WithErrorRecorder receives the original error, including non-nil RetryAfter
+// and Reject causes. Those causes also mark the processing span as an error.
 // It must select safe diagnostic fields before exporting application error data.
 // The default records only the error type. Failure status uses fixed text.
 func WithErrorRecorder(f func(context.Context, trace.Span, error)) Option {

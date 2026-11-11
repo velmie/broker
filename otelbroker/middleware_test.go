@@ -287,15 +287,16 @@ func TestGlobalProviderChosenAtInvocation(t *testing.T) {
 	}
 }
 
-func TestCustomPropagationSelectsOnlyUniqueSafeFields(t *testing.T) {
+func TestCustomPropagationSelectsSafeFields(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		headers []broker.Header
 		want    string
 	}{
 		{"case-insensitive", []broker.Header{{Name: "x-TrAcE", Value: []byte("safe")}}, "safe"},
-		{"duplicate", []broker.Header{{Name: "X-Trace", Value: []byte("safe")}, {Name: "x-trace", Value: []byte("safe")}}, ""},
+		{"duplicate", []broker.Header{{Name: "X-Trace", Value: []byte("safe")}, {Name: "x-trace", Value: []byte("safe")}}, "safe"},
 		{"control", []broker.Header{{Name: "X-Trace", Value: []byte("unsafe\r\nvalue")}}, ""},
+		{"invalid then valid", []broker.Header{{Name: "X-Trace", Value: []byte{0xff}}, {Name: "x-trace", Value: []byte("valid")}}, "valid"},
 		{"binary", []broker.Header{{Name: "X-Trace", Value: []byte{0xff}}}, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {

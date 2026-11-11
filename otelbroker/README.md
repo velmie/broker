@@ -58,10 +58,11 @@ With an ambient span, processing is its child and links to extracted message
 context. Without an ambient span, valid extracted context becomes its parent.
 Context values and cancellation remain intact.
 
-Extraction exposes header names, aliases and repeated values to the selected
-propagator, which decides whether to accept them. Injection replaces the selected propagator's
-fields while preserving unrelated ordered and binary headers. Caller data stays
-unchanged.
+Extraction combines case-insensitive header aliases under unique lowercase names.
+Multi-value propagators see all values in their original order. A single-value
+lookup returns the first valid text value. The propagator decides how to interpret
+them. Injection replaces the selected propagator's fields while preserving
+unrelated ordered and binary headers. Caller data stays unchanged.
 
 The propagator owns format and size limits. Application wiring owns trust policy
 and whether to carry baggage. Propagation is correlation, not authorization.
@@ -74,6 +75,10 @@ selects per-delivery attributes after extraction and before the span starts.
 
 `WithErrorRecorder` receives the original error and active span. The default
 records type and failure status without raw error text, bodies or header values.
+Callback errors, including cooperative cancellation, mark the processing span as
+an error. Non-nil `RetryAfter.Cause` and `Reject.Cause` do the same while the
+outcome records requested intent, not confirmed settlement. `LogProcessing`
+omits cooperative cancellation records.
 Custom recorders must preserve useful safe field or entity details while
 redacting application-specific data. Logical and correlation IDs require an
 explicit export decision. Callbacks must support concurrency and must not panic.
@@ -81,7 +86,7 @@ explicit export decision. Callbacks must support concurrency and must not panic.
 ## Observe native completion
 
 Processing ends before the adapter settles a delivery. Use
-`WithProcessingContext` in `Observer.Begin` and `ProcessingContext` in
+`CaptureProcessing` in `Observer.Begin` and `ProcessingContext` in
 `Observer.Record` to correlate native outcomes with the processing span without
 changing the context used for native operations. The separate
 `github.com/velmie/broker/otelbroker/natsjs` module provides a NATS observer.

@@ -110,6 +110,11 @@ uncertain settlement, processing or cleanup failures.
 `LogProcessing` omits cooperative cancellation when the handler returns exactly
 its context's non-nil `Err()` value. Wrapped cancellation errors remain logged.
 The `Level` and `Attributes` callbacks are not invoked for omitted records.
+OpenTelemetry processing spans still record cooperative cancellation as an error.
+Non-nil retry and rejection causes now also set span error status. OpenTelemetry
+header extraction combines case aliases and preserves all values for multi-value
+propagators. Single-value extraction uses the first valid value, including when
+the same header occurs more than once.
 
 Core v1.2, NATS v3.3, SQS v1.2 and Azure Service Bus v1.2 support `RunService`. For groups
 consisting entirely of supported consumers, replace `Coordinator.Run(ctx)` with `RunService(ctx)` and

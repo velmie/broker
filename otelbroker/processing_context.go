@@ -12,9 +12,9 @@ type processingCapture struct {
 	ctx context.Context
 }
 
-// WithProcessingContext installs delivery-local storage for the context created
+// CaptureProcessing installs delivery-local storage for the context created
 // by TraceProcessing. It preserves cancellation ancestry and starts no work.
-func WithProcessingContext(ctx context.Context) context.Context {
+func CaptureProcessing(ctx context.Context) context.Context {
 	return context.WithValue(ctx, processingContextKey{}, &processingCapture{})
 }
 

@@ -57,8 +57,6 @@ func TestMalformedPropagationIsIgnored(t *testing.T) {
 		{{Name: "traceparent", Value: []byte("bad")}},
 		{{Name: "traceparent", Value: []byte{0xff}}},
 		{{Name: "traceparent", Value: []byte("\nforged")}},
-		{{Name: "traceparent", Value: []byte("00-11111111111111111111111111111111-2222222222222222-01")},
-			{Name: "TRACEPARENT", Value: []byte("00-11111111111111111111111111111111-2222222222222222-01")}},
 	} {
 		provider, recorder := recording(t)
 		calls := 0

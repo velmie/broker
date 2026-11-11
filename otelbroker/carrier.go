@@ -24,39 +24,26 @@ func newCarrier(headers []broker.Header, fields []string) *textCarrier {
 		}
 	}
 	for _, header := range headers {
-		if _, exists := c.values[header.Name]; !exists {
-			c.keys = append(c.keys, header.Name)
+		name := strings.ToLower(header.Name)
+		if _, exists := c.values[name]; !exists {
+			c.keys = append(c.keys, name)
 		}
-		c.values[header.Name] = append(c.values[header.Name], string(header.Value))
+		c.values[name] = append(c.values[name], string(header.Value))
 	}
 	return c
 }
 
 func (c *textCarrier) Get(key string) string {
-	var values []string
-	for _, name := range c.keys {
-		if strings.EqualFold(name, key) {
-			values = append(values, c.values[name]...)
+	for _, value := range c.values[strings.ToLower(key)] {
+		if validText([]byte(value)) {
+			return value
 		}
 	}
-	if len(values) != 1 || !validText([]byte(values[0])) {
-		return ""
-	}
-	return values[0]
+	return ""
 }
 
-// Values keeps distinct spellings distinct when Keys presents aliases.
 func (c *textCarrier) Values(key string) []string {
-	if values, ok := c.values[key]; ok {
-		return slices.Clone(values)
-	}
-	var values []string
-	for _, name := range c.keys {
-		if strings.EqualFold(name, key) {
-			values = append(values, c.values[name]...)
-		}
-	}
-	return values
+	return slices.Clone(c.values[strings.ToLower(key)])
 }
 func (c *textCarrier) Set(key, value string) {
 	key = strings.ToLower(key)
