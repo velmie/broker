@@ -261,7 +261,13 @@ missing resources and verify existing ones without modifying them.
 `CheckStreams` checks availability only. They borrow the JetStream client and
 honor its timeout and the supplied context. Work-queue `MaxMessages` and
 `MaxBytes`, and durable `MaxAckPending`, apply when creating a resource. They do
-not limit operator adjustments to existing compatible resources.
+not limit operator adjustments to existing compatible resources. Stream names,
+owned stream subjects and consumer filter sets must match exactly (subject order
+is ignored).
+`DuplicateWindow` and consumer `AckWait` are minimums. The work-queue and
+retained-stream `MaxMessageBytes` is also a minimum, satisfied by an unlimited
+size. Consumer `MaxDeliveries` must match exactly, including `-1` for unlimited
+deliveries. Other native topology requirements are checked as well.
 NATS server 2.10.0 or newer is required.
 
 `DurableConsumerConfig.StartTime` sets the earliest message time only when a

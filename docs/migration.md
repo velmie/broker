@@ -38,7 +38,9 @@ serialized `subject` configuration to a `subjects` list.
 If a prerelease uses `RetainedStreamConfig.Subject`, remove that field.
 `RequireRetainedStream` verifies the stream's retention and size settings, while
 `EnsureDurableConsumer` checks that the stream covers every consumer filter,
-including wildcard filters.
+including wildcard filters. `MaxDeliveries` must match an existing consumer
+exactly, including `-1` for unlimited deliveries. Confirm the existing limit
+before adopting this verification.
 
 ## Upgrade from the subscriber API
 

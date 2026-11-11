@@ -11,7 +11,9 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-// LimitsStreamConfig selects an owned limits-retention stream.
+// LimitsStreamConfig selects an owned limits-retention stream. Name and Subjects
+// must match an existing stream exactly (subject order is ignored).
+// DuplicateWindow is a minimum for an existing stream.
 type LimitsStreamConfig struct {
 	Name            string        `k:"name" validate:"required"`
 	Subjects        []string      `k:"subjects" validate:"required,min=1"`
@@ -19,7 +21,9 @@ type LimitsStreamConfig struct {
 }
 
 // WorkQueueStreamConfig selects an owned work queue. MaxMessages and MaxBytes
-// are creation settings and do not constrain compatible existing streams.
+// are creation settings and do not constrain compatible existing streams. Name
+// and Subject must match exactly. DuplicateWindow and MaxMessageBytes are
+// minimums for an existing stream. An unlimited message size satisfies the minimum.
 type WorkQueueStreamConfig struct {
 	Name            string        `k:"name" validate:"required"`
 	Subject         string        `k:"subject" validate:"required"`
@@ -31,13 +35,18 @@ type WorkQueueStreamConfig struct {
 
 // RetainedStreamConfig selects an externally owned retained stream. Use it with
 // RequireRetainedStream and EnsureDurableConsumer, which verifies filter coverage.
+// Stream must match exactly. MaxMessageBytes is a minimum, also satisfied by an
+// unlimited message size.
 type RetainedStreamConfig struct {
 	Stream          string `k:"stream" validate:"required"`
 	MaxMessageBytes int32  `k:"max_message_bytes" validate:"gt=0"`
 }
 
 // DurableConsumerConfig selects a durable pull consumer. MaxAckPending is a
-// creation setting and does not constrain compatible existing consumers.
+// creation setting and does not constrain compatible existing consumers. Stream
+// identifies the stream; Durable and Subjects must match exactly, ignoring filter
+// order. AckWait is a minimum. MaxDeliveries must match exactly, including -1
+// for unlimited deliveries.
 type DurableConsumerConfig struct {
 	Stream  string `k:"stream" validate:"required"`
 	Durable string `k:"durable" validate:"required"`
@@ -397,7 +406,7 @@ func consumerMismatch(spec *DurableConsumerConfig, cfg *jetstream.ConsumerConfig
 		return mismatch("ack_policy", cfg.AckPolicy, jetstream.AckExplicitPolicy)
 	case cfg.AckWait < spec.AckWait:
 		return mismatch("ack_wait", cfg.AckWait, spec.AckWait)
-	case cfg.MaxDeliver != -1 && (spec.MaxDeliveries == -1 || cfg.MaxDeliver < spec.MaxDeliveries):
+	case cfg.MaxDeliver != spec.MaxDeliveries:
 		return mismatch("max_deliveries", cfg.MaxDeliver, spec.MaxDeliveries)
 	case !equalFilterSubjects(spec.Subjects, cfg.FilterSubject, cfg.FilterSubjects):
 		return mismatch("subjects", nativeFilterSubjects(cfg.FilterSubject, cfg.FilterSubjects), spec.Subjects)
