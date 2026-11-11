@@ -26,7 +26,8 @@ const (
 
 // NewObserver records completed settlements and native failures. It owns no
 // consumer, exporter or shutdown. Meter and logger must be non-nil. The caller
-// owns the supplied instrumentation.
+// owns the supplied instrumentation. NATS server and SDK errors are trusted
+// dependency diagnostics and are passed unchanged to the logger.
 func NewObserver(meter metric.Meter, logger *slog.Logger) (native.Observer, error) {
 	counter, err := meter.Int64Counter(
 		settlementCounterName,

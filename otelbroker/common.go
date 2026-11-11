@@ -22,8 +22,8 @@ const (
 )
 
 // Option configures tracing. Supplied callbacks and interfaces must be non-nil,
-// concurrency-safe and nonpanicking. Custom names, attributes and errors are
-// application-owned redaction boundaries.
+// concurrency-safe and nonpanicking. Custom names and attributes must be safe
+// to export.
 type Option func(*options)
 
 // WithPropagator selects propagation instead of the global propagator.
@@ -52,7 +52,6 @@ func WithProcessingAttributes(f func(context.Context, broker.Delivery) []attribu
 
 // WithErrorRecorder receives the original error, including non-nil RetryAfter
 // and Reject causes. Those causes also mark the processing span as an error.
-// It must select safe diagnostic fields before exporting application error data.
 // The default records only the error type. Failure status uses fixed text.
 func WithErrorRecorder(f func(context.Context, trace.Span, error)) Option {
 	return func(o *options) { o.record = f }

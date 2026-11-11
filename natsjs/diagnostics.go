@@ -13,10 +13,9 @@ const (
 )
 
 // ErrorFields describes one NATS error node for broker.DescribeError. It does
-// not traverse causes or serialize native descriptions, subjects in messages,
-// credentials, or panic values. The source is application-configured: callers
-// with sensitive source names must supply an earlier describer to redact it.
-// Unknown errors return nil so another describer can handle them.
+// not traverse causes or include native descriptions, subjects in messages, or
+// panic values. The application-configured source is returned unchanged. Unknown
+// errors return nil so another describer can handle them.
 func ErrorFields(err error) map[string]any {
 	switch value := err.(type) {
 	case *OperationError:

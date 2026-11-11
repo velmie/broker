@@ -13,8 +13,7 @@ const (
 )
 
 // StageError identifies the failed invocation. It does not prove retry safety.
-// Cause is required and can contain application data. A logging adapter must
-// inspect and redact causes before serialization, preserving useful diagnostics.
+// Cause is required and preserved for diagnostic use.
 type StageError struct {
 	Stage string
 	Cause error
@@ -34,8 +33,7 @@ type FieldError struct {
 }
 
 // RegistrationError identifies the coordinator binding and operation that failed.
-// Name is the configured diagnostic name. Cause is required and may contain
-// application data requiring redaction at the logging boundary.
+// Name is the configured diagnostic name. Cause is required and preserved.
 type RegistrationError struct {
 	Name      string
 	Operation string

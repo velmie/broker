@@ -103,8 +103,6 @@ func run(ctx context.Context, url string, provider *sdktrace.TracerProvider) (re
 		fmt.Printf("created order %s: %d x %s\n", command.ID, command.Quantity, command.SKU)
 		return nil
 	}, replies).WithMiddleware(
-		// The demo callback returns no sensitive application errors. Applications
-		// must supply a handler that redacts their own causes and selected fields.
 		otelbroker.TraceProcessing("nats", traceOptions...),
 		broker.LogProcessing(slog.Default(), broker.ProcessingLogConfig{}),
 		broker.RecoverPanics(), broker.SkipOwnMessages("order-worker"),

@@ -297,6 +297,6 @@ ownership contract matches the desired operation.
 Check stored keys and fingerprints against retained records, and wire metadata
 against existing producers and consumers. Exercise native publication,
 redelivery, reply failure, uncertain settlement and shutdown on the selected
-transport. Verify diagnostic causes and redaction through the actual configured
-logger. Local emulators cover their supported protocol paths; deployment
+transport. Verify diagnostic causes and safe diagnostic construction through the
+actual configured logger. Local emulators cover their supported protocol paths; deployment
 credentials, service configuration and cloud behavior need their own checks.

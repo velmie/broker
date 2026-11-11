@@ -61,7 +61,8 @@ operationally controlled consumer names. A confirmed retry is not a failed
 settlement, and none of these counts proves exactly-once processing.
 
 The observer logs startup, interrupted or failed fetches, and settlement failures.
-Original errors reach the supplied structured logger. A processing context is
+Original errors, including trusted NATS server and SDK diagnostics, reach the
+supplied structured logger unchanged. A processing context is
 captured for later native observations without changing the context used for
 native operations.
 

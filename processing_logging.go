@@ -39,9 +39,11 @@ type ProcessingLogConfig struct {
 // and ctx.Err() must be non-nil. Wrapped errors are logged. Processing results
 // do not establish a later transport outcome. Observe those at the adapter.
 //
-// Logger is required. Errors and custom attributes must be safe when created;
-// this middleware logs them unchanged. Standard slog ignores handler return
-// errors, so the handler must report its sink failures itself.
+// Logger is required. This middleware logs errors and custom attributes unchanged.
+// Application-created diagnostics must omit secrets. Ordinary dependency errors,
+// including NATS server and SDK errors, are trusted and logged unchanged.
+// Standard slog ignores handler return errors, so the handler must report its
+// sink failures itself.
 // Logger handlers and config callbacks must not panic or block waiting for their
 // own consumer. Wrap RecoverPanics inside this middleware for processing panics.
 func LogProcessing(logger *slog.Logger, config ProcessingLogConfig) HandlerMiddleware {

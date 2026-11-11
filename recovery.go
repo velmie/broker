@@ -22,7 +22,7 @@ type RecoveryConfig struct {
 	// failures that cannot safely start another receiving generation.
 	Retryable func(error) bool
 	// Logger records original failures before a replacement is scheduled. Its
-	// handler owns redaction and sink failures, as documented for LogProcessing.
+	// handler owns sink failures, as documented for LogProcessing.
 	Logger *slog.Logger
 }
 

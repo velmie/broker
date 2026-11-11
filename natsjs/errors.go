@@ -10,7 +10,8 @@ import (
 // cause. Run handles recognized pull receive interruptions internally. An error
 // returned by Run does not by itself establish that restarting the run or
 // replaying a delivery is safe. Causes are retained unchanged, including any
-// descriptions supplied by a NATS server.
+// descriptions supplied by a NATS server. NATS server and SDK error text is
+// trusted dependency diagnostic text and can be logged unchanged.
 type OperationError struct {
 	Source    string
 	Operation string

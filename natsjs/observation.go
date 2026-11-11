@@ -48,9 +48,9 @@ type Observer struct {
 	// later operation records use it. Terminal requests detach cancellation
 	// only after admission and add their own finite operation deadline.
 	Begin func(context.Context, DeliveryInfo) context.Context
-	// Record receives original errors. A logging adapter must inspect/redact
-	// application-specific causes and bound identifiers before serialization.
-	// Messages, headers, credentials and raw ACK subjects are never supplied.
+	// Record receives original errors, including NATS server and SDK diagnostics.
+	// Callbacks can record these unchanged. Observation fields do not include
+	// message bodies, headers, credentials or raw ACK subjects.
 	Record func(context.Context, Observation)
 }
 

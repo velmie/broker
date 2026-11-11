@@ -50,4 +50,5 @@ and relevant validation. Include an issue link only when one exists.
 Do not commit credentials, local absolute paths, transient diagnostics or private
 planning context. Examples receive credentials through native SDK configuration
 or environment variables. Preserve application ownership of topology and client
-lifetime, and retain diagnostic causes with redaction at the logging boundary.
+lifetime. Retain diagnostic causes and keep secrets out of application-created
+diagnostics. Ordinary dependency errors are logged unchanged.

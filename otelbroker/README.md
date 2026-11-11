@@ -79,9 +79,9 @@ Callback errors, including cooperative cancellation, mark the processing span as
 an error. Non-nil `RetryAfter.Cause` and `Reject.Cause` do the same while the
 outcome records requested intent, not confirmed settlement. `LogProcessing`
 omits cooperative cancellation records.
-Custom recorders must preserve useful safe field or entity details while
-redacting application-specific data. Logical and correlation IDs require an
-explicit export decision. Callbacks must support concurrency and must not panic.
+Custom recorders receive the original error and choose what to export. Logical
+and correlation IDs require an explicit export decision. Callbacks must support
+concurrency and must not panic.
 
 ## Observe native completion
 

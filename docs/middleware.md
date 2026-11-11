@@ -43,8 +43,9 @@ func NewHandler(
 }
 ```
 
-The logger's handler must redact application-specific errors while retaining
-useful causes and fields. See [diagnostics](error-handling.md#structured-diagnostics).
+Errors are logged unchanged. Application-created diagnostics must omit secrets.
+Ordinary dependency errors are trusted diagnostics. See
+[diagnostics](error-handling.md#structured-diagnostics).
 
 | Helper | Behavior |
 | --- | --- |
