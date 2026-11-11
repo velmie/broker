@@ -30,6 +30,14 @@ func (failures *configErrors) add(field, rule, message string) {
 	})
 }
 
+func (failures *configErrors) addCause(field, rule, message string, cause error) {
+	*failures = append(*failures, &broker.FieldError{
+		Field:  field,
+		Reason: rule,
+		Cause:  fmt.Errorf("%s: %w", message, cause),
+	})
+}
+
 func (failures *configErrors) required(field, value string) {
 	if value == "" {
 		failures.add(field, ruleRequired, field+" is required")

@@ -58,7 +58,7 @@ func (cfg ConnectionConfig) Validate() error {
 	if cfg.URL != "" {
 		loopback, err := validateConnectionURL(cfg.URL)
 		if err != nil {
-			failures.add("url", ruleType, "url must be a single nats://host:port endpoint without credentials, path, query or fragment")
+			failures.addCause("url", ruleType, "url must be a single nats://host:port endpoint without credentials, path, query or fragment", err)
 		} else {
 			if !loopback || cfg.Password != "" {
 				failures.required("username", cfg.Username)
@@ -161,19 +161,28 @@ func OpenConnection(ctx context.Context, cfg ConnectionConfig, logger *slog.Logg
 }
 
 func validateConnectionURL(raw string) (bool, error) {
-	endpoint, err := url.Parse(raw)
-	if err != nil || endpoint.Scheme != "nats" || endpoint.User != nil || endpoint.Opaque != "" ||
-		endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" || strings.Contains(raw, "#") ||
-		strings.ContainsAny(endpoint.Host, ", \t\r\n") {
-		return false, errors.New("invalid NATS endpoint")
+	// Reject credentials before parsing so that parse errors, which quote the
+	// input, never contain them.
+	if strings.ContainsAny(raw, "@?#,\r\n\t ") {
+		return false, errors.New("expected a single NATS endpoint without credentials, query or fragment")
 	}
-	host, port, err := net.SplitHostPort(endpoint.Host)
+	authority, ok := strings.CutPrefix(raw, "nats://")
+	if !ok || strings.Contains(authority, "/") {
+		return false, errors.New("expected nats://host:port")
+	}
+	host, port, err := net.SplitHostPort(authority)
 	if err != nil {
-		return false, errors.New("invalid host and port")
+		return false, err
 	}
 	number, err := strconv.Atoi(port)
-	if err != nil || host == "" || number < 1 || number > 65535 {
-		return false, errors.New("invalid host or port")
+	if err != nil {
+		return false, err
+	}
+	if host == "" || number < 1 || number > 65535 {
+		return false, errors.New("expected host and port in range 1 to 65535")
+	}
+	if _, err := url.Parse(raw); err != nil {
+		return false, err
 	}
 	address := net.ParseIP(host)
 	return address != nil && address.IsLoopback(), nil

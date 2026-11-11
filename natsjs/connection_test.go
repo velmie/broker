@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -177,5 +178,33 @@ func TestConnectionFailureRetainsTLSAndDialCauses(t *testing.T) {
 	}
 	if time.Since(started) > time.Second {
 		t.Fatal("dial exceeded the configured deadline")
+	}
+}
+
+func TestConnectionConfigURLErrorsKeepCauses(t *testing.T) {
+	base := natsjs.ConnectionConfig{
+		URL:            "nats://127.0.0.1:4222",
+		TLSMode:        "disabled",
+		ConnectTimeout: time.Second,
+		ReconnectWait:  time.Second,
+		InboxPrefix:    "_INBOX",
+	}
+	missingPort := base
+	missingPort.URL = "nats://127.0.0.1"
+	var addrErr *net.AddrError
+	if err := missingPort.Validate(); !errors.As(err, &addrErr) {
+		t.Fatalf("missing port cause = %v, want *net.AddrError", err)
+	}
+	badPort := base
+	badPort.URL = "nats://127.0.0.1:invalid"
+	var numErr *strconv.NumError
+	if err := badPort.Validate(); !errors.As(err, &numErr) {
+		t.Fatalf("invalid port cause = %v, want *strconv.NumError", err)
+	}
+	withCredentials := base
+	withCredentials.URL = "nats://user:secret-password@127.0.0.1:bad"
+	err := withCredentials.Validate()
+	if err == nil || strings.Contains(err.Error(), "secret-password") {
+		t.Fatalf("credentials error = %v, want rejection without the password", err)
 	}
 }
