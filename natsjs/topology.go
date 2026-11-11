@@ -45,6 +45,9 @@ type DurableConsumerConfig struct {
 	AckWait       time.Duration `k:"ack_wait" validate:"gt=0"`
 	MaxDeliveries int           `k:"max_deliveries" validate:"eq=-1|gt=0"`
 	MaxAckPending int           `k:"max_ack_pending" hint:"Maximum unacknowledged messages when creating the consumer" validate:"gt=0"`
+	// StartTime selects the earliest message time for a newly created consumer.
+	// Zero starts from the beginning. Existing consumers retain their position.
+	StartTime time.Time `k:"-"`
 }
 
 // Validate checks the profile without I/O.
@@ -86,6 +89,8 @@ func (cfg RetainedStreamConfig) Validate() error {
 }
 
 // Validate checks the profile without I/O.
+//
+//nolint:gocritic // The configuration is intentionally a value contract.
 func (cfg DurableConsumerConfig) Validate() error {
 	var failures configErrors
 	validateTopologyName(&failures, "stream", cfg.Stream)
@@ -219,9 +224,13 @@ func RequireRetainedStream(ctx context.Context, js jetstream.JetStream, cfg Reta
 }
 
 // EnsureDurableConsumer creates a missing durable or verifies it without updating it.
+// StartTime applies only on creation. An existing durable resumes from its
+// acknowledgement floor, regardless of its original starting position.
 // The create-only guarantee for concurrent first creation with differing settings
 // requires NATS 2.10 or newer. NATS 2.9 treats consumer creation as create-or-update,
 // so the last concurrent creator's settings may win.
+//
+//nolint:gocritic // Preserve the value configuration contract.
 func EnsureDurableConsumer(ctx context.Context, js jetstream.JetStream, cfg DurableConsumerConfig) error {
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -244,19 +253,24 @@ func EnsureDurableConsumer(ctx context.Context, js jetstream.JetStream, cfg Dura
 	consumer, err := js.Consumer(ctx, cfg.Stream, cfg.Durable)
 	var createErr error
 	if errors.Is(err, jetstream.ErrConsumerNotFound) {
+		createConfig := jetstream.ConsumerConfig{
+			Name:          cfg.Durable,
+			Durable:       cfg.Durable,
+			DeliverPolicy: jetstream.DeliverAllPolicy,
+			AckPolicy:     jetstream.AckExplicitPolicy,
+			AckWait:       cfg.AckWait,
+			MaxDeliver:    cfg.MaxDeliveries,
+			MaxAckPending: cfg.MaxAckPending,
+			FilterSubject: cfg.Subject,
+		}
+		if !cfg.StartTime.IsZero() {
+			createConfig.DeliverPolicy = jetstream.DeliverByStartTimePolicy
+			createConfig.OptStartTime = &cfg.StartTime
+		}
 		consumer, createErr = js.CreateConsumer(
 			ctx,
 			cfg.Stream,
-			jetstream.ConsumerConfig{
-				Name:          cfg.Durable,
-				Durable:       cfg.Durable,
-				DeliverPolicy: jetstream.DeliverAllPolicy,
-				AckPolicy:     jetstream.AckExplicitPolicy,
-				AckWait:       cfg.AckWait,
-				MaxDeliver:    cfg.MaxDeliveries,
-				MaxAckPending: cfg.MaxAckPending,
-				FilterSubject: cfg.Subject,
-			},
+			createConfig,
 		)
 		err = createErr
 		if createErr != nil {
@@ -270,7 +284,7 @@ func EnsureDurableConsumer(ctx context.Context, js jetstream.JetStream, cfg Dura
 		}
 		return operationFailure(source, operation, errors.Join(createErr, err))
 	}
-	if err = consumerMismatch(cfg, &consumer.CachedInfo().Config); err != nil {
+	if err = consumerMismatch(&cfg, &consumer.CachedInfo().Config); err != nil {
 		return operationFailure(source, "consumer_verify", errors.Join(createErr, err))
 	}
 	return nil
@@ -383,14 +397,12 @@ func matchesSubject(pattern, subject string) bool {
 	return len(parts) == len(tokens)
 }
 
-func consumerMismatch(spec DurableConsumerConfig, cfg *jetstream.ConsumerConfig) error {
+func consumerMismatch(spec *DurableConsumerConfig, cfg *jetstream.ConsumerConfig) error {
 	switch {
 	case cfg.Name != spec.Durable:
 		return mismatch("name", cfg.Name, spec.Durable)
 	case cfg.Durable != spec.Durable:
 		return mismatch("durable", cfg.Durable, spec.Durable)
-	case cfg.DeliverPolicy != jetstream.DeliverAllPolicy:
-		return mismatch("deliver_policy", cfg.DeliverPolicy, jetstream.DeliverAllPolicy)
 	case cfg.AckPolicy != jetstream.AckExplicitPolicy:
 		return mismatch("ack_policy", cfg.AckPolicy, jetstream.AckExplicitPolicy)
 	case cfg.AckWait < spec.AckWait:

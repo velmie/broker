@@ -197,6 +197,45 @@ The create-only guarantee for concurrent first creation with differing
 configurations requires NATS 2.10 or newer. NATS 2.9 treats consumer creation as
 create-or-update, so the last concurrent creator's settings may win.
 
+`DurableConsumerConfig.StartTime` sets the earliest message time only when a
+durable is created. Its zero value starts from the beginning of the stream.
+An existing durable retains its position and resumes from its acknowledgement
+floor, regardless of its original start policy or the supplied `StartTime`.
+
+For an externally owned retained stream, a new consumer can start at the
+beginning of a business-defined time window:
+
+```go
+package messaging
+
+import (
+	"context"
+	"time"
+
+	"github.com/nats-io/nats.go/jetstream"
+	"github.com/velmie/broker/natsjs/v3"
+)
+
+func EnsureEventsConsumer(ctx context.Context, js jetstream.JetStream, businessWindow time.Duration) error {
+	if err := natsjs.RequireRetainedStream(ctx, js, natsjs.RetainedStreamConfig{
+		Stream:          "EVENTS",
+		Subject:         "events.created",
+		MaxMessageBytes: 1024 * 1024,
+	}); err != nil {
+		return err
+	}
+	return natsjs.EnsureDurableConsumer(ctx, js, natsjs.DurableConsumerConfig{
+		Stream:        "EVENTS",
+		Durable:       "events-processor",
+		Subject:       "events.created",
+		AckWait:       time.Minute,
+		MaxDeliveries: 5,
+		MaxAckPending: 10,
+		StartTime:     time.Now().Add(-businessWindow),
+	})
+}
+```
+
 For a service that owns its stream and durable consumer, connect and provision
 the required topology before binding a Broker consumer:
 
