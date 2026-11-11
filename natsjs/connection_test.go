@@ -7,13 +7,11 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/velmie/x/svc/validation"
-
+	"github.com/velmie/broker"
 	"github.com/velmie/broker/natsjs/v3"
 )
 
@@ -31,9 +29,9 @@ func TestConnectionConfigValidation(t *testing.T) {
 	}
 	badPort := base
 	badPort.URL = "nats://127.0.0.1:invalid"
-	var numberError *strconv.NumError
-	if err := badPort.Validate(); !errors.As(err, &numberError) {
-		t.Fatalf("numeric port cause missing: %v", err)
+	var urlField *broker.FieldError
+	if err := badPort.Validate(); !errors.As(err, &urlField) || urlField.Field != "url" || urlField.Reason != "type" {
+		t.Fatalf("invalid port not identified: %v", err)
 	}
 	for _, tc := range []struct {
 		name   string
@@ -73,16 +71,18 @@ func TestConnectionConfigValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := base
 			tc.change(&cfg)
-			var failure *validation.Error
-			if err := cfg.Validate(); !errors.As(err, &failure) {
-				t.Fatalf("expected validation error: %v", err)
+			err := cfg.Validate()
+			joined, ok := err.(interface{ Unwrap() []error })
+			if !ok {
+				t.Fatalf("expected joined field errors: %v", err)
 			}
-			for _, violation := range failure.Violations {
-				if violation.Field == tc.field {
+			for _, violation := range joined.Unwrap() {
+				var field *broker.FieldError
+				if errors.As(violation, &field) && field.Field == tc.field {
 					return
 				}
 			}
-			t.Fatalf("missing %s: %v", tc.field, failure)
+			t.Fatalf("missing %s: %v", tc.field, err)
 		})
 	}
 }

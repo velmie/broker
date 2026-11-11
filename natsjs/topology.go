@@ -7,12 +7,8 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/velmie/x/svc/apperror"
-	"github.com/velmie/x/svc/validation"
 )
 
 // LimitsStreamConfig selects an owned limits-retention stream.
@@ -53,44 +49,54 @@ type DurableConsumerConfig struct {
 
 // Validate checks the profile without I/O.
 func (cfg LimitsStreamConfig) Validate() error {
-	var failures validation.Error
-	failures.AddStruct(cfg, configValidator.Struct(cfg))
+	var failures configErrors
 	validateTopologyName(&failures, "name", cfg.Name)
+	if len(cfg.Subjects) == 0 {
+		failures.add("subjects", ruleRequired, "subjects must contain at least one subject")
+	}
 	for _, subject := range cfg.Subjects {
-		if !validTopologySubject(subject, true) {
-			failures.Add("subjects", apperror.RuleType, "NATS subject filter", nil)
+		if !validConfigSubject(subject, true) {
+			failures.add("subjects", ruleType, "subjects must contain valid NATS subject filters")
 			break
 		}
 	}
-	return failures.Err()
+	failures.positive("duplicate_window", int64(cfg.DuplicateWindow))
+	return failures.err()
 }
 
 // Validate checks the profile without I/O.
 func (cfg WorkQueueStreamConfig) Validate() error {
-	var failures validation.Error
-	failures.AddStruct(cfg, configValidator.Struct(cfg))
+	var failures configErrors
 	validateTopologyName(&failures, "name", cfg.Name)
 	validateTopologySubject(&failures, cfg.Subject, true)
-	return failures.Err()
+	failures.positive("max_message_bytes", int64(cfg.MaxMessageBytes))
+	failures.positive("duplicate_window", int64(cfg.DuplicateWindow))
+	failures.positive("max_messages", cfg.MaxMessages)
+	failures.positive("max_bytes", cfg.MaxBytes)
+	return failures.err()
 }
 
 // Validate checks the profile without I/O.
 func (cfg RetainedStreamConfig) Validate() error {
-	var failures validation.Error
-	failures.AddStruct(cfg, configValidator.Struct(cfg))
+	var failures configErrors
 	validateTopologyName(&failures, "stream", cfg.Stream)
 	validateTopologySubject(&failures, cfg.Subject, false)
-	return failures.Err()
+	failures.positive("max_message_bytes", int64(cfg.MaxMessageBytes))
+	return failures.err()
 }
 
 // Validate checks the profile without I/O.
 func (cfg DurableConsumerConfig) Validate() error {
-	var failures validation.Error
-	failures.AddStruct(cfg, configValidator.Struct(cfg))
+	var failures configErrors
 	validateTopologyName(&failures, "stream", cfg.Stream)
 	validateTopologyName(&failures, "durable", cfg.Durable)
 	validateTopologySubject(&failures, cfg.Subject, true)
-	return failures.Err()
+	failures.positive("ack_wait", int64(cfg.AckWait))
+	if cfg.MaxDeliveries != -1 && cfg.MaxDeliveries <= 0 {
+		failures.add("max_deliveries", ruleOneOf, "max_deliveries must equal -1 or be greater than 0")
+	}
+	failures.positive("max_ack_pending", int64(cfg.MaxAckPending))
+	return failures.err()
 }
 
 // EnsureLimitsStream creates a missing stream or verifies an existing one without updating it.
@@ -279,22 +285,18 @@ func ensureStream(
 	return nil
 }
 
-func validateTopologyName(failures *validation.Error, field, name string) {
-	if name != "" && (strings.ContainsAny(name, ".*>/\\ \t\r\n") || !validNamespaceSubject(name)) {
-		failures.Add(field, apperror.RuleType, "NATS name", nil)
+func validateTopologyName(failures *configErrors, field, name string) {
+	failures.required(field, name)
+	if name != "" && (strings.ContainsAny(name, ".*>/\\ \t\r\n") || !validConfigSubject(name, false)) {
+		failures.add(field, ruleType, field+" must be a valid NATS name")
 	}
 }
 
-func validateTopologySubject(failures *validation.Error, subject string, filter bool) {
-	if subject != "" && !validTopologySubject(subject, filter) {
-		failures.Add("subject", apperror.RuleType, "NATS subject", nil)
+func validateTopologySubject(failures *configErrors, subject string, filter bool) {
+	failures.required("subject", subject)
+	if subject != "" && !validConfigSubject(subject, filter) {
+		failures.add("subject", ruleType, "subject must be a valid NATS subject")
 	}
-}
-
-func validTopologySubject(subject string, filter bool) bool {
-	return utf8.ValidString(subject) && strings.IndexFunc(subject, func(r rune) bool {
-		return unicode.IsSpace(r) || unicode.IsControl(r)
-	}) < 0 && validSubject(subject, filter)
 }
 
 func mismatch(field string) error { return fmt.Errorf("incompatible %s", field) }

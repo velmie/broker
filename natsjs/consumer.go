@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/nats-io/nats.go"
 
@@ -524,20 +522,14 @@ func (c *Consumer) validateNamespace() error {
 		)
 	}
 	if domain := c.config.Domain; domain != "" {
-		if strings.ContainsAny(domain, ".*>") || !validNamespaceSubject(domain) {
+		if strings.ContainsAny(domain, ".*>") || !validConfigSubject(domain, false) {
 			return fieldFailure("Domain", "invalid_namespace", errors.New("consumer Domain: invalid namespace name"))
 		}
 	}
 	if prefix := c.config.APIPrefix; prefix != "" {
-		if !validNamespaceSubject(strings.TrimSuffix(prefix, ".")) {
+		if !validConfigSubject(strings.TrimSuffix(prefix, "."), false) {
 			return fieldFailure("APIPrefix", "invalid_namespace", errors.New("consumer APIPrefix: invalid namespace subject"))
 		}
 	}
 	return nil
-}
-func validNamespaceSubject(subject string) bool {
-	if !utf8.ValidString(subject) || strings.IndexFunc(subject, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
-		return false
-	}
-	return validSubject(subject, false)
 }

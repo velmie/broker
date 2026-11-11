@@ -12,10 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/nats-io/nats.go"
-	"github.com/velmie/x/svc/apperror"
-	"github.com/velmie/x/svc/validation"
+)
+
+const (
+	tlsModeVerify   = "verify"
+	tlsModeDisabled = "disabled"
 )
 
 // ConnectionConfig describes a single NATS endpoint using username/password and verified TLS.
@@ -24,54 +26,71 @@ type ConnectionConfig struct {
 	Username       string        `k:"username" sensitive:"true" hint:"Paired with password, required outside literal loopback"`
 	Password       string        `k:"password" sensitive:"true" hint:"Paired with username, required outside literal loopback"`
 	TLSMode        string        `k:"tls_mode" default:"verify" validate:"oneof=verify disabled"`
-	TLSCAFile      string        `k:"tls_ca_file" sensitive:"true" hint:"Optional trust roots when TLS is enabled"`
-	TLSServerName  string        `k:"tls_server_name" sensitive:"true" hint:"Optional verified server name when TLS is enabled"`
+	TLSCAFile      string        `k:"tls_ca_file" hint:"Optional trust roots when TLS is enabled"`
+	TLSServerName  string        `k:"tls_server_name" hint:"Optional verified server name when TLS is enabled"`
 	ConnectTimeout time.Duration `k:"connect_timeout" default:"2s" validate:"gt=0"`
-	ReconnectWait  time.Duration `k:"reconnect_wait" default:"250ms" validate:"gt=0"`
-	MaxReconnects  int           `k:"max_reconnects" default:"3" validate:"gte=-1"`
-	InboxPrefix    string        `k:"inbox_prefix" default:"_INBOX" validate:"required"`
+	// ReconnectWait defaults to 250ms. With three reconnects, an outage longer
+	// than about one second can permanently close the connection.
+	ReconnectWait time.Duration `k:"reconnect_wait" default:"250ms" validate:"gt=0"`
+	// MaxReconnects defaults to three. The finite retry budget is fail-fast.
+	MaxReconnects int    `k:"max_reconnects" default:"3" validate:"gte=-1"`
+	InboxPrefix   string `k:"inbox_prefix" default:"_INBOX" validate:"required"`
 }
-
-var configValidator = newConfigValidator()
 
 // Validate checks configuration without opening resources and reports relative k paths.
 //
 //nolint:gocritic // The configuration is intentionally a value contract.
 func (cfg ConnectionConfig) Validate() error {
-	var failures validation.Error
-	failures.AddStruct(cfg, configValidator.Struct(cfg))
-	loopback, err := validateConnectionURL(cfg.URL)
-	if err != nil {
-		failures.Add("url", apperror.RuleType, "NATS URL", err)
-		return failures.Err()
+	var failures configErrors
+	failures.required("url", cfg.URL)
+	failures.positive("connect_timeout", int64(cfg.ConnectTimeout))
+	failures.positive("reconnect_wait", int64(cfg.ReconnectWait))
+	if cfg.MaxReconnects < -1 {
+		failures.add("max_reconnects", ruleGreaterOrEqual, "max_reconnects must be greater than or equal to -1")
 	}
-	if (cfg.Username == "") != (cfg.Password == "") || (!loopback && cfg.Username == "") ||
-		strings.ContainsAny(cfg.Username, "\r\n") || strings.ContainsAny(cfg.Password, "\r\n") {
-		failures.Add("username", apperror.RuleType, "broker credentials", nil)
-		failures.Add("password", apperror.RuleType, "broker credentials", nil)
+	failures.required("inbox_prefix", cfg.InboxPrefix)
+	if cfg.InboxPrefix != "" && !validConfigSubject(cfg.InboxPrefix, false) {
+		failures.add("inbox_prefix", ruleType, "inbox_prefix must be a valid NATS subject")
 	}
-	if cfg.TLSMode == "disabled" {
-		if !loopback {
-			failures.Add("tls_mode", apperror.RuleType, "broker TLS mode", nil)
+	if cfg.TLSMode != tlsModeVerify && cfg.TLSMode != tlsModeDisabled {
+		failures.add("tls_mode", ruleOneOf, "tls_mode must be one of verify or disabled")
+	}
+	if cfg.URL != "" {
+		loopback, err := validateConnectionURL(cfg.URL)
+		if err != nil {
+			failures.add("url", ruleType, "url must be a single nats://host:port endpoint without credentials, path, query or fragment")
+		} else {
+			if !loopback || cfg.Password != "" {
+				failures.required("username", cfg.Username)
+			}
+			if !loopback || cfg.Username != "" {
+				failures.required("password", cfg.Password)
+			}
+			if !loopback && cfg.TLSMode == tlsModeDisabled {
+				failures.add("tls_mode", ruleEqual, "tls_mode must equal verify outside literal loopback")
+			}
 		}
+	}
+	if cfg.TLSMode == tlsModeDisabled {
 		if cfg.TLSCAFile != "" {
-			failures.Add("tls_ca_file", apperror.RuleEQ, "", nil)
+			failures.add("tls_ca_file", ruleEqual, "tls_ca_file must be empty when TLS is disabled")
 		}
 		if cfg.TLSServerName != "" {
-			failures.Add("tls_server_name", apperror.RuleEQ, "", nil)
+			failures.add("tls_server_name", ruleEqual, "tls_server_name must be empty when TLS is disabled")
 		}
 	}
-	if cfg.InboxPrefix != "" && !validNamespaceSubject(cfg.InboxPrefix) {
-		failures.Add("inbox_prefix", apperror.RuleType, "NATS subject", nil)
-	}
-	return failures.Err()
+	return failures.err()
 }
 
 // OpenConnection opens a connection whose dialing is governed by ctx, including reconnects.
 // The context must outlive the connection. Close the connection after its users join.
+// A nil logger is rejected.
 //
 //nolint:gocritic // The configuration is intentionally a value contract.
 func OpenConnection(ctx context.Context, cfg ConnectionConfig, logger *slog.Logger) (*nats.Conn, error) {
+	if logger == nil {
+		return nil, errors.New("logger is required")
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -85,6 +104,7 @@ func OpenConnection(ctx context.Context, cfg ConnectionConfig, logger *slog.Logg
 		nats.MaxReconnects(cfg.MaxReconnects),
 		nats.ReconnectWait(cfg.ReconnectWait),
 		nats.RetryOnFailedConnect(false),
+		nats.IgnoreDiscoveredServers(),
 		nats.NoCallbacksAfterClientClose(),
 		nats.SetCustomDialer(&connectionDialer{
 			ctx: ctx,
@@ -113,7 +133,7 @@ func OpenConnection(ctx context.Context, cfg ConnectionConfig, logger *slog.Logg
 	if cfg.Username != "" {
 		options = append(options, nats.UserInfo(cfg.Username, cfg.Password))
 	}
-	if cfg.TLSMode == "verify" {
+	if cfg.TLSMode == tlsModeVerify {
 		tlsConfig := &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			ServerName: cfg.TLSServerName,
@@ -140,37 +160,20 @@ func OpenConnection(ctx context.Context, cfg ConnectionConfig, logger *slog.Logg
 	return connection, nil
 }
 
-func newConfigValidator() *validator.Validate {
-	v := validator.New(validator.WithRequiredStructEnabled(), validator.WithTagNameFuncBlankOmit())
-	v.RegisterTagNameFunc(validation.FieldNames("k"))
-	return v
-}
-
 func validateConnectionURL(raw string) (bool, error) {
-	if strings.ContainsAny(raw, "@?#,\r\n\t ") {
-		return false, errors.New("expected a single NATS endpoint without credentials, query or fragment")
+	endpoint, err := url.Parse(raw)
+	if err != nil || endpoint.Scheme != "nats" || endpoint.User != nil || endpoint.Opaque != "" ||
+		endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" || strings.Contains(raw, "#") ||
+		strings.ContainsAny(endpoint.Host, ", \t\r\n") {
+		return false, errors.New("invalid NATS endpoint")
 	}
-	authority, ok := strings.CutPrefix(raw, "nats://")
-	if !ok || strings.Contains(authority, "/") {
-		return false, errors.New("expected nats://host:port")
-	}
-	host, port, err := net.SplitHostPort(authority)
+	host, port, err := net.SplitHostPort(endpoint.Host)
 	if err != nil {
-		return false, err
+		return false, errors.New("invalid host and port")
 	}
 	number, err := strconv.Atoi(port)
-	if err != nil {
-		return false, err
-	}
-	endpoint, err := url.Parse(raw)
-	if err != nil {
-		return false, err
-	}
-	if endpoint.Scheme != "nats" || endpoint.User != nil || endpoint.Opaque != "" || endpoint.Path != "" || endpoint.ForceQuery {
-		return false, errors.New("expected nats://host:port")
-	}
-	if host == "" || number < 1 || number > 65535 {
-		return false, fmt.Errorf("expected host and port in range 1 to 65535")
+	if err != nil || host == "" || number < 1 || number > 65535 {
+		return false, errors.New("invalid host or port")
 	}
 	address := net.ParseIP(host)
 	return address != nil && address.IsLoopback(), nil
