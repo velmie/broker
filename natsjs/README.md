@@ -182,6 +182,9 @@ connection attempts and must remain alive until the connection is closed.
 Close the connection after its users have stopped. The configuration defaults
 are intended for a configuration loader, not applied by `OpenConnection`.
 Other authentication or connection profiles can use the native NATS client.
+The connection ignores server-advertised endpoints on reconnect. The suggested
+three reconnects at 250 ms are a fail-fast policy: an outage longer than about a
+second can leave the connection permanently closed.
 
 `EnsureLimitsStream`, `EnsureWorkQueueStream` and `EnsureDurableConsumer` create
 missing resources and verify existing ones without modifying them.
@@ -190,3 +193,57 @@ missing resources and verify existing ones without modifying them.
 honor its timeout and the supplied context. Work-queue `MaxMessages` and
 `MaxBytes`, and durable `MaxAckPending`, apply when creating a resource. They do
 not limit operator adjustments to existing compatible resources.
+
+For a service that owns its stream and durable consumer, connect and provision
+the required topology before binding a Broker consumer:
+
+```go
+package messaging
+
+import (
+	"context"
+	"log/slog"
+	"time"
+
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+	"github.com/velmie/broker/natsjs/v3"
+)
+
+func ConnectOrders(ctx context.Context, cfg natsjs.ConnectionConfig, logger *slog.Logger) (*nats.Conn, error) {
+	conn, err := natsjs.OpenConnection(ctx, cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	js, err := jetstream.New(conn)
+	if err == nil {
+		err = natsjs.EnsureWorkQueueStream(ctx, js, natsjs.WorkQueueStreamConfig{
+			Name:            "ORDERS",
+			Subject:         "orders.>",
+			MaxMessageBytes: 1024 * 1024,
+			DuplicateWindow: 2 * time.Minute,
+			MaxMessages:     10000,
+			MaxBytes:        1024 * 1024 * 1024,
+		})
+	}
+	if err == nil {
+		err = natsjs.EnsureDurableConsumer(ctx, js, natsjs.DurableConsumerConfig{
+			Stream:        "ORDERS",
+			Durable:       "processor",
+			Subject:       "orders.created",
+			AckWait:       time.Minute,
+			MaxDeliveries: 5,
+			MaxAckPending: 10,
+		})
+	}
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+```
+
+Pass the returned connection to `Orders` above and close it after all consumers
+have stopped. Set connection fields explicitly or use a configuration loader to
+apply the tagged defaults.

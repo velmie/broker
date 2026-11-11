@@ -113,37 +113,37 @@ func EnsureLimitsStream(ctx context.Context, js jetstream.JetStream, cfg LimitsS
 	}
 	return ensureStream(ctx, js, &want, func(actual *jetstream.StreamConfig) error {
 		if actual.Name != cfg.Name {
-			return mismatch("name")
+			return mismatch("name", actual.Name, cfg.Name)
 		}
 		a, b := slices.Clone(actual.Subjects), slices.Clone(cfg.Subjects)
 		slices.Sort(a)
 		slices.Sort(b)
 		if !slices.Equal(a, b) {
-			return mismatch("subjects")
+			return mismatch("subjects", actual.Subjects, cfg.Subjects)
 		}
 		if actual.Storage != jetstream.FileStorage {
-			return mismatch("storage")
+			return mismatch("storage", actual.Storage, jetstream.FileStorage)
 		}
 		if actual.Retention != jetstream.LimitsPolicy {
-			return mismatch("retention")
+			return mismatch("retention", actual.Retention, jetstream.LimitsPolicy)
 		}
-		if actual.Duplicates != cfg.DuplicateWindow {
-			return mismatch("duplicate_window")
+		if actual.Duplicates < cfg.DuplicateWindow {
+			return mismatch("duplicate_window", actual.Duplicates, cfg.DuplicateWindow)
 		}
 		if actual.NoAck {
-			return mismatch("no_ack")
+			return mismatch("no_ack", actual.NoAck, false)
 		}
 		if actual.Sealed {
-			return mismatch("sealed")
+			return mismatch("sealed", actual.Sealed, false)
 		}
 		if actual.Mirror != nil {
-			return mismatch("mirror")
+			return mismatch("mirror", actual.Mirror != nil, false)
 		}
 		if len(actual.Sources) != 0 {
-			return mismatch("sources")
+			return mismatch("sources", len(actual.Sources), 0)
 		}
 		if actual.SubjectTransform != nil {
-			return mismatch("subject_transform")
+			return mismatch("subject_transform", actual.SubjectTransform != nil, false)
 		}
 		return nil
 	})
@@ -167,16 +167,16 @@ func EnsureWorkQueueStream(ctx context.Context, js jetstream.JetStream, cfg Work
 	}
 	return ensureStream(ctx, js, &want, func(actual *jetstream.StreamConfig) error {
 		if actual.Name != cfg.Name {
-			return mismatch("name")
+			return mismatch("name", actual.Name, cfg.Name)
 		}
 		if len(actual.Subjects) != 1 || actual.Subjects[0] != cfg.Subject {
-			return mismatch("subject")
+			return mismatch("subject", actual.Subjects, []string{cfg.Subject})
 		}
 		if actual.Retention != jetstream.WorkQueuePolicy {
-			return mismatch("retention")
+			return mismatch("retention", actual.Retention, jetstream.WorkQueuePolicy)
 		}
 		if actual.Duplicates < cfg.DuplicateWindow {
-			return mismatch("duplicate_window")
+			return mismatch("duplicate_window", actual.Duplicates, cfg.DuplicateWindow)
 		}
 		return retentionMismatch(actual, cfg.MaxMessageBytes)
 	})
@@ -193,7 +193,7 @@ func RequireRetainedStream(ctx context.Context, js jetstream.JetStream, cfg Reta
 	}
 	actual := stream.CachedInfo().Config
 	if actual.Name != cfg.Stream {
-		err = mismatch("name")
+		err = mismatch("name", actual.Name, cfg.Stream)
 	}
 	covered := false
 	for _, pattern := range actual.Subjects {
@@ -203,10 +203,10 @@ func RequireRetainedStream(ctx context.Context, js jetstream.JetStream, cfg Reta
 		}
 	}
 	if err == nil && !covered {
-		err = mismatch("subject")
+		err = mismatch("subject", actual.Subjects, cfg.Subject)
 	}
 	if err == nil && actual.Retention != jetstream.LimitsPolicy {
-		err = mismatch("retention")
+		err = mismatch("retention", actual.Retention, jetstream.LimitsPolicy)
 	}
 	if err == nil {
 		err = retentionMismatch(&actual, cfg.MaxMessageBytes)
@@ -220,6 +220,20 @@ func EnsureDurableConsumer(ctx context.Context, js jetstream.JetStream, cfg Dura
 		return err
 	}
 	source := cfg.Stream + "/" + cfg.Durable
+	stream, err := js.Stream(ctx, cfg.Stream)
+	if err != nil {
+		return operationFailure(cfg.Stream, "stream_lookup", err)
+	}
+	covered := false
+	for _, pattern := range stream.CachedInfo().Config.Subjects {
+		if matchesSubject(pattern, cfg.Subject) {
+			covered = true
+			break
+		}
+	}
+	if !covered {
+		return operationFailure(cfg.Stream, "stream_verify", mismatch("subject", stream.CachedInfo().Config.Subjects, cfg.Subject))
+	}
 	consumer, err := js.Consumer(ctx, cfg.Stream, cfg.Durable)
 	var createErr error
 	if errors.Is(err, jetstream.ErrConsumerNotFound) {
@@ -243,7 +257,11 @@ func EnsureDurableConsumer(ctx context.Context, js jetstream.JetStream, cfg Dura
 		}
 	}
 	if err != nil {
-		return operationFailure(source, "consumer_lookup", errors.Join(createErr, err))
+		operation := "consumer_lookup"
+		if createErr != nil {
+			operation = "consumer_create"
+		}
+		return operationFailure(source, operation, errors.Join(createErr, err))
 	}
 	if err = consumerMismatch(cfg, &consumer.CachedInfo().Config); err != nil {
 		return operationFailure(source, "consumer_verify", errors.Join(createErr, err))
@@ -277,7 +295,11 @@ func ensureStream(
 		}
 	}
 	if err != nil {
-		return operationFailure(want.Name, "stream_lookup", errors.Join(createErr, err))
+		operation := "stream_lookup"
+		if createErr != nil {
+			operation = "stream_create"
+		}
+		return operationFailure(want.Name, operation, errors.Join(createErr, err))
 	}
 	if err = verify(&stream.CachedInfo().Config); err != nil {
 		return operationFailure(want.Name, "stream_verify", errors.Join(createErr, err))
@@ -299,34 +321,36 @@ func validateTopologySubject(failures *configErrors, subject string, filter bool
 	}
 }
 
-func mismatch(field string) error { return fmt.Errorf("incompatible %s", field) }
+func mismatch(field string, have, want any) error {
+	return fmt.Errorf("incompatible %s: have %v, want %v", field, have, want)
+}
 
 func retentionMismatch(cfg *jetstream.StreamConfig, maxBytes int32) error {
 	switch {
 	case cfg.Storage != jetstream.FileStorage:
-		return mismatch("storage")
+		return mismatch("storage", cfg.Storage, jetstream.FileStorage)
 	case cfg.Discard != jetstream.DiscardNew:
-		return mismatch("discard")
+		return mismatch("discard", cfg.Discard, jetstream.DiscardNew)
 	case cfg.MaxMsgsPerSubject > 0 && !cfg.DiscardNewPerSubject:
-		return mismatch("max_msgs_per_subject")
+		return mismatch("discard_new_per_subject", cfg.DiscardNewPerSubject, true)
 	case cfg.MaxAge != 0:
-		return mismatch("max_age")
+		return mismatch("max_age", cfg.MaxAge, time.Duration(0))
 	case cfg.AllowMsgTTL:
-		return mismatch("allow_msg_ttl")
+		return mismatch("allow_msg_ttl", cfg.AllowMsgTTL, false)
 	case cfg.MaxMsgSize >= 0 && cfg.MaxMsgSize < maxBytes:
-		return mismatch("max_message_bytes")
+		return mismatch("max_message_bytes", cfg.MaxMsgSize, maxBytes)
 	case cfg.NoAck:
-		return mismatch("no_ack")
+		return mismatch("no_ack", cfg.NoAck, false)
 	case cfg.Sealed:
-		return mismatch("sealed")
+		return mismatch("sealed", cfg.Sealed, false)
 	case cfg.AllowRollup:
-		return mismatch("allow_rollup")
+		return mismatch("allow_rollup", cfg.AllowRollup, false)
 	case cfg.Mirror != nil:
-		return mismatch("mirror")
+		return mismatch("mirror", cfg.Mirror != nil, false)
 	case len(cfg.Sources) != 0:
-		return mismatch("sources")
+		return mismatch("sources", len(cfg.Sources), 0)
 	case cfg.SubjectTransform != nil:
-		return mismatch("subject_transform")
+		return mismatch("subject_transform", cfg.SubjectTransform != nil, false)
 	default:
 		return nil
 	}
@@ -342,6 +366,9 @@ func matchesSubject(pattern, subject string) bool {
 		if part == ">" {
 			return i == len(parts)-1
 		}
+		if tokens[i] == ">" || (tokens[i] == "*" && part != "*") {
+			return false
+		}
 		if part != "*" && part != tokens[i] {
 			return false
 		}
@@ -352,29 +379,29 @@ func matchesSubject(pattern, subject string) bool {
 func consumerMismatch(spec DurableConsumerConfig, cfg *jetstream.ConsumerConfig) error {
 	switch {
 	case cfg.Name != spec.Durable:
-		return mismatch("name")
+		return mismatch("name", cfg.Name, spec.Durable)
 	case cfg.Durable != spec.Durable:
-		return mismatch("durable")
+		return mismatch("durable", cfg.Durable, spec.Durable)
 	case cfg.DeliverPolicy != jetstream.DeliverAllPolicy:
-		return mismatch("deliver_policy")
+		return mismatch("deliver_policy", cfg.DeliverPolicy, jetstream.DeliverAllPolicy)
 	case cfg.AckPolicy != jetstream.AckExplicitPolicy:
-		return mismatch("ack_policy")
+		return mismatch("ack_policy", cfg.AckPolicy, jetstream.AckExplicitPolicy)
 	case cfg.AckWait < spec.AckWait:
-		return mismatch("ack_wait")
+		return mismatch("ack_wait", cfg.AckWait, spec.AckWait)
 	case cfg.MaxDeliver != -1 && (spec.MaxDeliveries == -1 || cfg.MaxDeliver < spec.MaxDeliveries):
-		return mismatch("max_deliveries")
+		return mismatch("max_deliveries", cfg.MaxDeliver, spec.MaxDeliveries)
 	case cfg.FilterSubject != spec.Subject || len(cfg.FilterSubjects) != 0:
-		return mismatch("subject")
+		return mismatch("subject", []any{cfg.FilterSubject, cfg.FilterSubjects}, spec.Subject)
 	case cfg.DeliverSubject != "" || cfg.DeliverGroup != "":
-		return mismatch("push_delivery")
+		return mismatch("push_delivery", []string{cfg.DeliverSubject, cfg.DeliverGroup}, "pull")
 	case len(cfg.BackOff) != 0:
-		return mismatch("backoff")
+		return mismatch("backoff", cfg.BackOff, "none")
 	case cfg.HeadersOnly:
-		return mismatch("headers_only")
+		return mismatch("headers_only", cfg.HeadersOnly, false)
 	case cfg.MemoryStorage:
-		return mismatch("memory_storage")
+		return mismatch("memory_storage", cfg.MemoryStorage, false)
 	case cfg.InactiveThreshold != 0:
-		return mismatch("inactive_threshold")
+		return mismatch("inactive_threshold", cfg.InactiveThreshold, time.Duration(0))
 	default:
 		return nil
 	}

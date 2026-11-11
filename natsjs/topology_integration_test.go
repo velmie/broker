@@ -175,3 +175,66 @@ func TestTopologyConfigRejectsInvalidSubjectWithoutIO(t *testing.T) {
 		t.Fatalf("invalid subject was accepted: %v", err)
 	}
 }
+
+func TestDurableConsumerRejectsFilterOutsideStream(t *testing.T) {
+	conn, err := nats.Connect(serverURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(conn.Close)
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = js.CreateStream(t.Context(), jetstream.StreamConfig{
+		Name:     "FILTER_COVERAGE",
+		Subjects: []string{"orders.*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, filter := range []string{"other.created", "orders.>"} {
+		cfg := natsjs.DurableConsumerConfig{
+			Stream:        "FILTER_COVERAGE",
+			Durable:       "worker",
+			Subject:       filter,
+			AckWait:       time.Second,
+			MaxDeliveries: 1,
+			MaxAckPending: 1,
+		}
+		err = natsjs.EnsureDurableConsumer(t.Context(), js, cfg)
+		var op *natsjs.OperationError
+		if !errors.As(err, &op) || op.Operation != "stream_verify" || !strings.Contains(err.Error(), "subject") {
+			t.Fatalf("filter %q was not rejected at stream verification: %v", filter, err)
+		}
+	}
+}
+
+func TestLimitsStreamDuplicateWindowIsMinimum(t *testing.T) {
+	conn, err := nats.Connect(serverURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(conn.Close)
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := natsjs.LimitsStreamConfig{
+		Name:            "DUPLICATE_WINDOW",
+		Subjects:        []string{"window.>"},
+		DuplicateWindow: 5 * time.Minute,
+	}
+	if err = natsjs.EnsureLimitsStream(t.Context(), js, cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg.DuplicateWindow = 2 * time.Minute
+	if err = natsjs.EnsureLimitsStream(t.Context(), js, cfg); err != nil {
+		t.Fatalf("larger existing duplicate window rejected: %v", err)
+	}
+	cfg.DuplicateWindow = 10 * time.Minute
+	if err = natsjs.EnsureLimitsStream(t.Context(), js, cfg); err == nil ||
+		!strings.Contains(err.Error(), "have 5m0s, want 10m0s") {
+		t.Fatalf("expected actual and required window: %v", err)
+	}
+}
