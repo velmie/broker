@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'natsjs', 'sqs', 'sns', 'azuresb', 'idempotency', 'otelbroker']
+        module: ['.', 'natsjs', 'sqs', 'sns', 'azuresb', 'idempotency', 'otelbroker', 'otelbroker/otelnatsjs']
     defaults:
       run:
         working-directory: ${{ matrix.module }}
