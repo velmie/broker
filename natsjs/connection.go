@@ -105,6 +105,7 @@ func OpenConnection(ctx context.Context, cfg ConnectionConfig, logger *slog.Logg
 		nats.ReconnectWait(cfg.ReconnectWait),
 		nats.RetryOnFailedConnect(false),
 		nats.IgnoreDiscoveredServers(),
+		nats.SkipHostLookup(),
 		nats.NoCallbacksAfterClientClose(),
 		nats.SetCustomDialer(&connectionDialer{
 			ctx: ctx,
