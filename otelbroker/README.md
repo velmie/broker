@@ -89,7 +89,7 @@ Processing ends before the adapter settles a delivery. Use
 `CaptureProcessing` in `Observer.Begin` and `ProcessingContext` in
 `Observer.Record` to correlate native outcomes with the processing span without
 changing the context used for native operations. The separate
-`github.com/velmie/broker/otelbroker/natsjs` module provides a NATS observer.
+`github.com/velmie/broker/otelbroker/otelnatsjs` module provides a NATS observer.
 The [traced examples](examples/README.md) show delivery spans with separate
 ACK, delete, renewal or completion observations. Successful processing can coexist
 with an unknown native outcome. Avoid instrumenting the same operation twice.

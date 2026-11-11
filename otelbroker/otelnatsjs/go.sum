@@ -23,16 +23,10 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/velmie/broker v1.3.0-rc.2 h1:zywYDi7aIkbQzxSnZ7s50EPQjjNI1eS4CGKYPK/5214=
-github.com/velmie/broker v1.3.0-rc.2/go.mod h1:ntjx4+ujXzohdaWZ3j1e+Ep9L1wdFaLKCcOtyu+F6UY=
 github.com/velmie/broker v1.3.0-rc.4 h1:N5QH9S7yBrLs0zyiCIEOWaJU19gOm+RJnkIw66pZpO4=
 github.com/velmie/broker v1.3.0-rc.4/go.mod h1:ntjx4+ujXzohdaWZ3j1e+Ep9L1wdFaLKCcOtyu+F6UY=
-github.com/velmie/broker/natsjs/v3 v3.4.0-rc.1 h1:YkTc9e8c3q1CWtEs0Wnt5PCD3o1/oX2nlDLO2U9aR8U=
-github.com/velmie/broker/natsjs/v3 v3.4.0-rc.1/go.mod h1:D/mhLw/IQsackOr+TzlPmQa1ImJ/wPSUJE0FFtNcJj4=
 github.com/velmie/broker/natsjs/v3 v3.4.0-rc.3 h1:tY0XYMQSK+31OPxtY5V/+ztWsmbw/oyCSYZqHa67oe8=
 github.com/velmie/broker/natsjs/v3 v3.4.0-rc.3/go.mod h1:VAR8RUtbBKe9Z6sT4V5vLrjEcMB0wOTu1t2+vJ1+VBY=
-github.com/velmie/broker/otelbroker v1.1.0-rc.1 h1:WSYFxk0UNqfRe8z6OOoVYhPPFYcMeYcDGuwtAdvq1RQ=
-github.com/velmie/broker/otelbroker v1.1.0-rc.1/go.mod h1:rufNEMZWQk14C3TX66JOLcDcKT2F3GrwQsFdILh28iE=
 github.com/velmie/broker/otelbroker v1.1.0-rc.3 h1:evwX4+R8CDQNxi269Dej2/pufExTJ1x+w2xdhylR++s=
 github.com/velmie/broker/otelbroker v1.1.0-rc.3/go.mod h1:VE+QNN8p7IcLEfVe7cfswYmveKKIPuzjAsF2jckF8sc=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=

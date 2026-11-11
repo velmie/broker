@@ -131,6 +131,7 @@ retain the operation and cause text. See [error handling](docs/error-handling.md
 | [`sns`](sns/README.md) | Amazon SNS publication and notification decoding |
 | [`azuresb`](azuresb/readme.md) | Azure Service Bus queues and subscriptions |
 | [`otelbroker`](otelbroker/README.md) | OpenTelemetry processing and publication spans |
+| [`otelbroker/otelnatsjs`](otelbroker/otelnatsjs/README.md) | OpenTelemetry metrics and logs for NATS settlement |
 | [`idempotency`](idempotency/README.md) | Completion markers and replay handling with `idempo` |
 
 Module paths below the root use the `github.com/velmie/broker/` prefix. Each guide

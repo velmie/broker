@@ -1,8 +1,9 @@
-module github.com/velmie/broker/otelbroker/natsjs
+module github.com/velmie/broker/otelbroker/otelnatsjs
 
 go 1.26.0
 
 require (
+	github.com/nats-io/nats.go v1.54.0
 	github.com/velmie/broker v1.3.0-rc.4
 	github.com/velmie/broker/natsjs/v3 v3.4.0-rc.3
 	github.com/velmie/broker/otelbroker v1.1.0-rc.3
@@ -17,7 +18,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.20.2 // indirect
-	github.com/nats-io/nats.go v1.54.0 // indirect
 	github.com/nats-io/nkeys v0.4.16 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
