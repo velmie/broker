@@ -242,10 +242,12 @@ commands, and [native sessions](cmd/native/README.md) for SDK-specific features.
 
 ## Configured connection and topology profiles
 
-`ConnectionConfig` loads a single NATS endpoint with optional username and
-password and verified TLS. `Validate` checks the configuration without opening
-resources. `OpenConnection` returns a native connection. Its context governs
-connection attempts and must remain alive until the connection is closed.
+`ConnectionConfig` loads a single NATS endpoint. Username and password are
+optional together only for a literal loopback IP address. Every other host
+requires both credentials and verified TLS. `Validate` checks the configuration
+without opening resources. `OpenConnection` returns a native connection. Its
+context governs connection attempts and must remain alive until the connection
+is closed.
 Close the connection after its users have stopped. The configuration defaults
 are intended for a configuration loader, not applied by `OpenConnection`.
 Other authentication or connection profiles can use the native NATS client.

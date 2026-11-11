@@ -1,6 +1,6 @@
 # Migration guide
 
-## Upgrade NATS v3 to v4
+## Upgrade NATS v3.3.1 to v4
 
 The NATS adapter requires NATS server 2.10.0 or newer. Upgrade every server
 that can host or serve the JetStream consumer before adopting v4. Change imports
@@ -8,17 +8,12 @@ from `github.com/velmie/broker/natsjs/v3` to
 `github.com/velmie/broker/natsjs/v4` and update dependent modules together.
 
 Replace `Subject: "events.created"` with
-`Subjects: []string{"events.created"}` in both `ConsumerConfig` and
-`DurableConsumerConfig`. In serialized topology configuration replace `subject`
-with the `subjects` list. There is no implicit filter and no singular selector.
+`Subjects: []string{"events.created"}` in `ConsumerConfig`. There is no implicit
+filter and no singular selector.
 Keep the existing stream and durable names. Reusing a compatible durable preserves
 its acknowledgement position. Multiple filters must match the remote set exactly;
 coordinate membership changes with the operator before deploying them. See the
 [filter and permission guidance](../natsjs/README.md#select-multiple-subjects).
-
-Remove `Subject` from `RetainedStreamConfig`. `RequireRetainedStream` verifies
-the stream's retention and size settings, while `EnsureDurableConsumer` checks
-that the stream covers every consumer filter, including wildcard filters.
 
 Since v3.3.1, the adapter also provides:
 
@@ -33,6 +28,17 @@ Since v3.3.1, the adapter also provides:
 - Optional native settlement instrumentation in the `otelnatsjs` module.
 
 Review the [adapter guide](../natsjs/README.md) when adopting these additions.
+
+### Upgrade topology configuration from v4 prereleases
+
+The topology profiles were not present in v3.3.1. If an earlier v4 prerelease
+uses `DurableConsumerConfig.Subject`, replace it with `Subjects` and update
+serialized `subject` configuration to a `subjects` list.
+
+If a prerelease uses `RetainedStreamConfig.Subject`, remove that field.
+`RequireRetainedStream` verifies the stream's retention and size settings, while
+`EnsureDurableConsumer` checks that the stream covers every consumer filter,
+including wildcard filters.
 
 ## Upgrade from the subscriber API
 
