@@ -17,6 +17,7 @@ const (
 	ruleEqual          = "eq"
 	ruleOneOf          = "oneof"
 	ruleType           = "type"
+	ruleUnique         = "unique"
 )
 
 type configErrors []error

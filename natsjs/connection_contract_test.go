@@ -93,7 +93,7 @@ func TestTopologyValidationReportsRuleAndField(t *testing.T) {
 	cfg := natsjs.DurableConsumerConfig{
 		Stream:        "ORDERS",
 		Durable:       "processor",
-		Subject:       "orders.created",
+		Subjects:      []string{"orders.created"},
 		AckWait:       0,
 		MaxDeliveries: 1,
 		MaxAckPending: 1,
@@ -156,7 +156,7 @@ func TestTopologyProfilesValidateRequiredAndPositiveFields(t *testing.T) {
 				return (natsjs.DurableConsumerConfig{
 					Stream:        "ORDERS",
 					Durable:       "worker",
-					Subject:       "orders.>",
+					Subjects:      []string{"orders.>"},
 					AckWait:       time.Second,
 					MaxAckPending: 1,
 				}).Validate()

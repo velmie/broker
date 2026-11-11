@@ -225,7 +225,7 @@ func EnsureEventsConsumer(ctx context.Context, js jetstream.JetStream, businessW
 	return natsjs.EnsureDurableConsumer(ctx, js, natsjs.DurableConsumerConfig{
 		Stream:        "EVENTS",
 		Durable:       "events-processor",
-		Subject:       "events.created",
+		Subjects: []string{"events.created"},
 		AckWait:       time.Minute,
 		MaxDeliveries: 5,
 		MaxAckPending: 10,
@@ -270,7 +270,7 @@ func ConnectOrders(ctx context.Context, cfg natsjs.ConnectionConfig, logger *slo
 		err = natsjs.EnsureDurableConsumer(ctx, js, natsjs.DurableConsumerConfig{
 			Stream:        "ORDERS",
 			Durable:       "processor",
-			Subject:       "orders.created",
+			Subjects: []string{"orders.created"},
 			AckWait:       time.Minute,
 			MaxDeliveries: 5,
 			MaxAckPending: 10,

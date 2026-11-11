@@ -2,6 +2,7 @@ package natsjs_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ func TestDurableConsumerDriftRejected(t *testing.T) {
 	want := natsjs.DurableConsumerConfig{
 		Stream:        "ORDERS",
 		Durable:       "worker",
-		Subject:       "orders.created",
+		Subjects:      []string{"orders.created"},
 		AckWait:       time.Minute,
 		MaxDeliveries: 5,
 		MaxAckPending: 1,
@@ -67,7 +68,7 @@ func TestDurableConsumerDriftRejected(t *testing.T) {
 			change: func(c *jetstream.ConsumerConfig) { c.DeliverSubject = "push" },
 		},
 		{
-			field:  "subject",
+			field:  "subjects",
 			change: func(c *jetstream.ConsumerConfig) { c.FilterSubject = "orders.other" },
 		},
 	} {
@@ -158,5 +159,85 @@ func TestStreamRetentionDriftRejected(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestDurableConsumerEquivalentNativeFilters(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		expected []string
+		scalar   string
+		multiple []string
+		valid    bool
+	}{
+		{
+			name:     "scalar",
+			expected: []string{"orders.created"},
+			scalar:   "orders.created",
+			valid:    true,
+		},
+		{
+			name:     "singleton list",
+			expected: []string{"orders.created"},
+			multiple: []string{"orders.created"},
+			valid:    true,
+		},
+		{
+			name:     "reordered",
+			expected: []string{"orders.created", "orders.paid"},
+			multiple: []string{"orders.paid", "orders.created"},
+			valid:    true,
+		},
+		{
+			name:     "unfiltered",
+			expected: []string{"orders.created"},
+		},
+		{
+			name:     "extra",
+			expected: []string{"orders.created"},
+			multiple: []string{"orders.created", "orders.paid"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := natsjs.DurableConsumerConfig{
+				Stream:        "ORDERS",
+				Durable:       "worker",
+				Subjects:      slices.Clone(tc.expected),
+				AckWait:       time.Second,
+				MaxDeliveries: -1,
+				MaxAckPending: 1,
+			}
+			actual := jetstream.ConsumerConfig{
+				Name:           "worker",
+				Durable:        "worker",
+				AckPolicy:      jetstream.AckExplicitPolicy,
+				AckWait:        time.Second,
+				MaxDeliver:     -1,
+				FilterSubject:  tc.scalar,
+				FilterSubjects: slices.Clone(tc.multiple),
+			}
+			js := &staticTopology{
+				stream: &staticStream{
+					info: jetstream.StreamInfo{
+						Config: jetstream.StreamConfig{
+							Name:     "ORDERS",
+							Subjects: []string{"orders.>"},
+						},
+					},
+				},
+				consumer: &staticConsumer{
+					info: jetstream.ConsumerInfo{
+						Config: actual,
+					},
+				},
+			}
+			err := natsjs.EnsureDurableConsumer(context.Background(), js, cfg)
+			if (err == nil) != tc.valid {
+				t.Fatalf("verification: %v", err)
+			}
+			if !slices.Equal(cfg.Subjects, tc.expected) || !slices.Equal(actual.FilterSubjects, tc.multiple) {
+				t.Fatal("verification changed input order")
+			}
+		})
 	}
 }

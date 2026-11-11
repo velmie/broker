@@ -50,7 +50,7 @@ func TestTopologyRealServer(t *testing.T) {
 	consumer := natsjs.DurableConsumerConfig{
 		Stream:        cfg.Name,
 		Durable:       "test",
-		Subject:       "topology.test.create",
+		Subjects:      []string{"topology.test.create"},
 		AckWait:       time.Second,
 		MaxDeliveries: 5,
 		MaxAckPending: 1,
@@ -166,7 +166,7 @@ func TestTopologyConfigRejectsInvalidSubjectWithoutIO(t *testing.T) {
 	cfg := natsjs.DurableConsumerConfig{
 		Stream:        "STREAM",
 		Durable:       "durable",
-		Subject:       "invalid\u2003subject",
+		Subjects:      []string{"invalid\u2003subject"},
 		AckWait:       time.Second,
 		MaxDeliveries: 1,
 		MaxAckPending: 1,
@@ -197,7 +197,7 @@ func TestDurableConsumerRejectsFilterOutsideStream(t *testing.T) {
 		cfg := natsjs.DurableConsumerConfig{
 			Stream:        "FILTER_COVERAGE",
 			Durable:       "worker",
-			Subject:       filter,
+			Subjects:      []string{filter},
 			AckWait:       time.Second,
 			MaxDeliveries: 1,
 			MaxAckPending: 1,

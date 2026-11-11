@@ -82,7 +82,7 @@ func TestTopologyCreateFailuresKeepBothCauses(t *testing.T) {
 	consumer := natsjs.DurableConsumerConfig{
 		Stream:        "ORDERS",
 		Durable:       "worker",
-		Subject:       "orders.created",
+		Subjects:      []string{"orders.created"},
 		AckWait:       time.Second,
 		MaxDeliveries: 1,
 		MaxAckPending: 1,

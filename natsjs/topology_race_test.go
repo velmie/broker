@@ -112,7 +112,7 @@ func TestConcurrentDifferentTopologyCreatesUseFallback(t *testing.T) {
 			results <- natsjs.EnsureDurableConsumer(t.Context(), consumers, natsjs.DurableConsumerConfig{
 				Stream:        "RACE_CONSUMERS",
 				Durable:       "worker",
-				Subject:       subject,
+				Subjects:      []string{subject, "consume.common"},
 				AckWait:       time.Second,
 				MaxDeliveries: 2,
 				MaxAckPending: 1,

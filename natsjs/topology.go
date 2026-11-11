@@ -39,9 +39,10 @@ type RetainedStreamConfig struct {
 // DurableConsumerConfig selects a durable pull consumer. MaxAckPending is a
 // creation setting and does not constrain compatible existing consumers.
 type DurableConsumerConfig struct {
-	Stream        string        `k:"stream" validate:"required"`
-	Durable       string        `k:"durable" validate:"required"`
-	Subject       string        `k:"subject" validate:"required"`
+	Stream  string `k:"stream" validate:"required"`
+	Durable string `k:"durable" validate:"required"`
+	// Subjects is a nonempty set of unique NATS filters. Order is ignored.
+	Subjects      []string      `k:"subjects" validate:"required,min=1,unique,dive,required" hint:"Unique filters; order is ignored"`
 	AckWait       time.Duration `k:"ack_wait" validate:"gt=0"`
 	MaxDeliveries int           `k:"max_deliveries" validate:"eq=-1|gt=0"`
 	MaxAckPending int           `k:"max_ack_pending" hint:"Maximum unacknowledged messages when creating the consumer" validate:"gt=0"`
@@ -95,7 +96,7 @@ func (cfg DurableConsumerConfig) Validate() error {
 	var failures configErrors
 	validateTopologyName(&failures, "stream", cfg.Stream)
 	validateTopologyName(&failures, "durable", cfg.Durable)
-	validateTopologySubject(&failures, cfg.Subject, true)
+	validateFilterSubjects(&failures, cfg.Subjects)
 	failures.positive("ack_wait", int64(cfg.AckWait))
 	if cfg.MaxDeliveries != -1 && cfg.MaxDeliveries <= 0 {
 		failures.add("max_deliveries", ruleOneOf, "max_deliveries must equal -1 or be greater than 0")
@@ -233,15 +234,17 @@ func EnsureDurableConsumer(ctx context.Context, js jetstream.JetStream, cfg Dura
 	if err != nil {
 		return operationFailure(cfg.Stream, "stream_lookup", err)
 	}
-	covered := false
-	for _, pattern := range stream.CachedInfo().Config.Subjects {
-		if matchesSubject(pattern, cfg.Subject) {
-			covered = true
-			break
+	for _, subject := range cfg.Subjects {
+		covered := false
+		for _, pattern := range stream.CachedInfo().Config.Subjects {
+			if matchesSubject(pattern, subject) {
+				covered = true
+				break
+			}
 		}
-	}
-	if !covered {
-		return operationFailure(cfg.Stream, "stream_verify", mismatch("subject", stream.CachedInfo().Config.Subjects, cfg.Subject))
+		if !covered {
+			return operationFailure(cfg.Stream, "stream_verify", mismatch("subjects", stream.CachedInfo().Config.Subjects, subject))
+		}
 	}
 	consumer, err := js.Consumer(ctx, cfg.Stream, cfg.Durable)
 	var createErr error
@@ -254,7 +257,11 @@ func EnsureDurableConsumer(ctx context.Context, js jetstream.JetStream, cfg Dura
 			AckWait:       cfg.AckWait,
 			MaxDeliver:    cfg.MaxDeliveries,
 			MaxAckPending: cfg.MaxAckPending,
-			FilterSubject: cfg.Subject,
+		}
+		if len(cfg.Subjects) == 1 {
+			createConfig.FilterSubject = cfg.Subjects[0]
+		} else {
+			createConfig.FilterSubjects = cfg.Subjects
 		}
 		if !cfg.StartTime.IsZero() {
 			createConfig.DeliverPolicy = jetstream.DeliverByStartTimePolicy
@@ -402,8 +409,8 @@ func consumerMismatch(spec *DurableConsumerConfig, cfg *jetstream.ConsumerConfig
 		return mismatch("ack_wait", cfg.AckWait, spec.AckWait)
 	case cfg.MaxDeliver != -1 && (spec.MaxDeliveries == -1 || cfg.MaxDeliver < spec.MaxDeliveries):
 		return mismatch("max_deliveries", cfg.MaxDeliver, spec.MaxDeliveries)
-	case cfg.FilterSubject != spec.Subject || len(cfg.FilterSubjects) != 0:
-		return mismatch("subject", []any{cfg.FilterSubject, cfg.FilterSubjects}, spec.Subject)
+	case !equalFilterSubjects(spec.Subjects, cfg.FilterSubject, cfg.FilterSubjects):
+		return mismatch("subjects", nativeFilterSubjects(cfg.FilterSubject, cfg.FilterSubjects), spec.Subjects)
 	case cfg.DeliverSubject != "" || cfg.DeliverGroup != "":
 		return mismatch("push_delivery", []string{cfg.DeliverSubject, cfg.DeliverGroup}, "pull")
 	case len(cfg.BackOff) != 0:

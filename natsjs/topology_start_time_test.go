@@ -69,7 +69,7 @@ func TestEnsureDurableConsumerCreateStartTime(t *testing.T) {
 			cfg := natsjs.DurableConsumerConfig{
 				Stream:        "ORDERS",
 				Durable:       "worker",
-				Subject:       "orders.created",
+				Subjects:      []string{"orders.created"},
 				AckWait:       time.Second,
 				MaxDeliveries: 3,
 				MaxAckPending: 1,
@@ -93,7 +93,7 @@ func TestEnsureDurableConsumerAcceptsExistingStartPositions(t *testing.T) {
 	cfg := natsjs.DurableConsumerConfig{
 		Stream:        "ORDERS",
 		Durable:       "worker",
-		Subject:       "orders.created",
+		Subjects:      []string{"orders.created"},
 		AckWait:       time.Second,
 		MaxDeliveries: 3,
 		MaxAckPending: 1,

@@ -52,7 +52,7 @@ func TestDurableConsumerStartsAtConfiguredTime(t *testing.T) {
 	cfg := natsjs.DurableConsumerConfig{
 		Stream:        "START_TIME_TEST",
 		Durable:       "worker",
-		Subject:       "start.time",
+		Subjects:      []string{"start.time"},
 		AckWait:       time.Second,
 		MaxDeliveries: 3,
 		MaxAckPending: 1,
@@ -135,7 +135,7 @@ func TestEnsureDurableConsumerPreservesExistingDeliverNew(t *testing.T) {
 	cfg := natsjs.DurableConsumerConfig{
 		Stream:        "EXISTING_START_TEST",
 		Durable:       "worker",
-		Subject:       "existing.start",
+		Subjects:      []string{"existing.start"},
 		AckWait:       time.Second,
 		MaxDeliveries: 3,
 		MaxAckPending: 1,
