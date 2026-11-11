@@ -100,6 +100,8 @@ func (cfg DurableConsumerConfig) Validate() error {
 }
 
 // EnsureLimitsStream creates a missing stream or verifies an existing one without updating it.
+// Concurrent first creation with differing configurations requires NATS 2.10 or newer
+// for the create-only guarantee. See EnsureDurableConsumer for the 2.9 limitation.
 func EnsureLimitsStream(ctx context.Context, js jetstream.JetStream, cfg LimitsStreamConfig) error {
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -150,6 +152,8 @@ func EnsureLimitsStream(ctx context.Context, js jetstream.JetStream, cfg LimitsS
 }
 
 // EnsureWorkQueueStream creates a missing stream or verifies an existing one without updating it.
+// Concurrent first creation with differing configurations requires NATS 2.10 or newer
+// for the create-only guarantee. See EnsureDurableConsumer for the 2.9 limitation.
 func EnsureWorkQueueStream(ctx context.Context, js jetstream.JetStream, cfg WorkQueueStreamConfig) error {
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -215,6 +219,9 @@ func RequireRetainedStream(ctx context.Context, js jetstream.JetStream, cfg Reta
 }
 
 // EnsureDurableConsumer creates a missing durable or verifies it without updating it.
+// The create-only guarantee for concurrent first creation with differing settings
+// requires NATS 2.10 or newer. NATS 2.9 treats consumer creation as create-or-update,
+// so the last concurrent creator's settings may win.
 func EnsureDurableConsumer(ctx context.Context, js jetstream.JetStream, cfg DurableConsumerConfig) error {
 	if err := cfg.Validate(); err != nil {
 		return err

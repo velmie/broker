@@ -193,6 +193,9 @@ missing resources and verify existing ones without modifying them.
 honor its timeout and the supplied context. Work-queue `MaxMessages` and
 `MaxBytes`, and durable `MaxAckPending`, apply when creating a resource. They do
 not limit operator adjustments to existing compatible resources.
+The create-only guarantee for concurrent first creation with differing
+configurations requires NATS 2.10 or newer. NATS 2.9 treats consumer creation as
+create-or-update, so the last concurrent creator's settings may win.
 
 For a service that owns its stream and durable consumer, connect and provision
 the required topology before binding a Broker consumer:
